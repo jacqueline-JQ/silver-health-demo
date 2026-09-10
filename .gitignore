@@ -4,3 +4,6 @@
 .ralph/*.lock
 .ralph/*.log
 output/playwright/**/*.log
+output/playwright/**/*current.yml
+output/playwright/**/failure.png
+output/playwright/**/failure.json

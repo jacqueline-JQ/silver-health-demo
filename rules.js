@@ -151,7 +151,7 @@
     if (!canDeclare(data, accountId, e) || e.changeToken !== operation.token || operation.accountId !== accountId || Date.now() > operation.expires) throw Error('撤销已过期或记录已变化，请使用更正记录');
     const before = declaration(e);
     const token = id('undo');
-    e.changes.push({ id: token, kind: '撤销', before, status: operation.before.status, recordedAt: now(data), recordedBy: accountId, reliableTime: true, restores: clone(operation.before), syncState: 'local', receivedAt: now(data) });
+    e.changes.push({ id: token, kind: '撤销', before, status: operation.before.status, recordedAt: now(data), recordedBy: accountId, reliableTime: true, restores: clone(operation.before), syncState: data.simulationMode==='offline'?'pending':'local', receivedAt: data.simulationMode==='offline'?null:now(data) });
     Object.assign(e, clone(operation.before), { changeToken: token });
   }
   function snooze(data, accountId, eventId, duration) {
@@ -174,11 +174,94 @@
     });
     return { star: date <= day(data) && basis.length > 0 && basis.every(b => ['taken', 'skipped'].includes(b.status)), total: basis.length, recorded: basis.filter(b => FACTS.includes(b.status)).length, taken: basis.filter(b => b.status === 'taken').length, basis, cutoff, ruleVersion: 2 };
   }
+  function notificationDefaults(d) {
+    d.notificationsEnabled ??= true;d.privatePreview ??= false;d.simulationMode ??= 'online';
+    d.notificationLogs.forEach(n=>{if(!n.kind)n.legacy=true;});
+    return d;
+  }
+  // 仅专门的离线场景重建“模拟远端可见”版本；共享家庭事实仍只保存一份。
+  function simulatedRemote(e) {
+    const remote=clone(e);
+    if(e.changes.some(c=>c.syncState==='pending')) {
+      const received=e.changes.filter(c=>c.syncState!=='pending').at(-1);
+      remote.status=received?.status||'pending';remote.recordedAt=received?.recordedAt||null;
+    }
+    if(e.snoozeSyncState==='pending') { remote.snoozeUsed=0;remote.snoozedAt=null;remote.snoozeUntil=null; }
+    return remote;
+  }
+  function notificationEligible(d,kind,e) {
+    if(!e)return false;
+    const task=kind==='N2'?simulatedRemote(e):e;
+    if(task.cancelledAt||resolved(task)||protectedAt(task,now(d))||now(d)<task.createdAt)return false;
+    if(kind==='N2')return stateOf(task,d)==='overdue';
+    if(kind==='N3')return now(d)>=task.reminderAt;
+    return now(d)>=task.reminderAt && ((now(d)<task.deadlineAt) || (task.snoozeUsed&&now(d)>=task.snoozeUntil));
+  }
+  function notificationRound(d,e,kind) {
+    const task=kind==='N2'?simulatedRemote(e):e;
+    return task.snoozeUsed&&now(d)>=task.snoozeUntil?`snooze-${task.snoozeUntil}`:`initial-${kind==='N2'?task.deadlineAt:task.reminderAt}`;
+  }
+  function notificationRecipients(d,kind,pid) {
+    return d.accounts.filter(a=>a.role===(kind==='N2'?'child':'elder')&&canAccess(d,a.id,pid));
+  }
+  function appendNotification(d,kind,e,recipientId,operationId,fromAccountId=null) {
+    const round=kind==='N3'?operationId:notificationRound(d,e,kind);
+    const existing=d.notificationLogs.find(n=>n.kind===kind&&n.eventId===e.id&&n.recipientId===recipientId&&n.round===round);
+    if(existing)return existing;
+    const p=d.elderProfiles.find(p=>p.id===e.profileId),a=d.accounts.find(a=>a.id===fromAccountId);
+    const pending=kind==='N2'&&(e.changes.some(c=>c.syncState==='pending')||e.snoozeSyncState==='pending');
+    const title=kind==='N1'?'该吃药啦！':kind==='N2'?`${p.name}有用药记录待核对`:`${a.name}提醒您核对`;
+    const text=`${e.date} ${e.slot} · ${e.snapshot.name} · 计划 ${e.snapshot.doseValue} ${e.snapshot.doseUnit} · ${e.scheduledTime} 提醒，${pending?'模拟远端暂未收到记录':'目前尚未记录'}。请按实际情况记录。`;
+    const deliveryState=d.simulationMode==='failure'?'failed':d.simulationMode==='offline'&&kind==='N3'?'pending':'delivered';
+    const n={id:id('notice'),kind,eventId:e.id,profileId:e.profileId,date:e.date,recipientId,fromAccountId,operationId,round,title,text,shortText:'您有一条用药记录提醒',createdAt:now(d),deliveryState,deliveryAttempts:1,deliveredAt:deliveryState==='delivered'?now(d):null,simulated:true};
+    d.notificationLogs.push(n);return n;
+  }
+  function evaluateNotifications(d) {
+    if(!d.notificationsEnabled)return [];
+    const before=new Set(d.notificationLogs.map(n=>n.id));
+    for(const kind of ['N1','N2'])for(const e of d.doseEvents) {
+      if(!notificationEligible(d,kind,e))continue;
+      for(const recipient of notificationRecipients(d,kind,e.profileId))appendNotification(d,kind,e,recipient.id,`${kind}-${e.id}-${notificationRound(d,e,kind)}`);
+    }
+    return d.notificationLogs.filter(n=>!before.has(n.id));
+  }
+  function sendN3(d,accountId,eventId,operationId) {
+    const previous=d.notificationLogs.find(n=>n.kind==='N3'&&n.operationId===operationId);
+    if(previous) { if(previous.fromAccountId!==accountId||previous.eventId!==eventId)throw Error('提醒请求不一致');return previous; }
+    const e=d.doseEvents.find(e=>e.id===eventId),reason=reminderReason(d,accountId,e);
+    if(reason)throw Error(reason);
+    if(!d.notificationsEnabled)throw Error('模拟通知已关闭，未发送');
+    const recipients=notificationRecipients(d,'N3',e.profileId);
+    if(!recipients.length)throw Error('该档案暂无可接收通知的长辈演示账号');
+    e.n3LastAt=now(d);
+    return appendNotification(d,'N3',e,recipients[0].id,operationId,accountId);
+  }
+  function retryNotifications(d) {
+    if(!d.notificationsEnabled)return;
+    for(const n of d.notificationLogs.filter(n=>n.kind&&['failed','pending'].includes(n.deliveryState))) {
+      const e=d.doseEvents.find(e=>e.id===n.eventId);
+      if(!canAccess(d,n.recipientId,n.profileId)||!notificationEligible(d,n.kind,e)||(n.kind==='N3'&&!canAccess(d,n.fromAccountId,n.profileId))) { n.deliveryState='suppressed';continue; }
+      n.deliveryAttempts+=1;
+      if(d.simulationMode==='online') { n.deliveryState='delivered';n.deliveredAt=now(d); }
+    }
+  }
+  function syncSimulation(d) {
+    d.simulationMode='online';
+    for(const e of d.doseEvents) {
+      for(const c of e.changes)if(c.syncState==='pending') { c.syncState='synced';c.receivedAt=now(d); }
+      if(e.snoozeSyncState==='pending') { e.snoozeSyncState='synced';e.snoozeReceivedAt=now(d); }
+    }
+    retryNotifications(d);
+  }
+  function focusCandidates(d,accountId) {
+    return d.doseEvents.filter(e=>own(d,accountId,e)&&canAccess(d,accountId,e.profileId)&&notificationEligible(d,'N1',e))
+      .sort((a,b)=>a.reminderAt.localeCompare(b.reminderAt)||a.id.localeCompare(b.id));
+  }
   function migrate(raw) {
     if (raw?.version === 2) {
       const d = clone(raw);
       d.doseEvents.forEach(e => { e.started ||= e.startAt <= now(d) || !!e.changes.length || !!e.snoozeUsed; });
-      return d;
+      return notificationDefaults(d);
     }
     if (!raw || (raw.version != null && raw.version !== 1)) throw Error('invalid');
     const d = clone(raw);
@@ -213,7 +296,7 @@
     for (const key of ['isPro', 'proEnabled', 'subscriptionStatus', 'piggyBank', 'rewardBalance', 'transactions', 'mascot', 'mascotUpdatedAt']) {
       delete d[key]; d.accounts.forEach(a => { delete a[key]; }); d.elderProfiles.forEach(p => { delete p[key]; });
     }
-    return d;
+    return notificationDefaults(d);
   }
   function prepareSeed(raw) {
     const d = migrate(raw);
@@ -250,8 +333,10 @@
         return Array.isArray(e.changes) && new Set(e.changes.map(c => c.id)).size === e.changes.length && e.changes.every(c => c.id && ['pending', ...FACTS].includes(c.status) && (c.recordedAt == null || validStamp(c.recordedAt)));
       })) return false;
       if (!d.healthRecords.every(r => d.elderProfiles.some(p => p.id === r.profileId) && ['blood_pressure', 'blood_lipid', 'body'].includes(r.type) && r.values && Object.values(r.values).every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0) && typeof r.measuredAt === 'string' && validDate(r.measuredAt.slice(0, 10)) && validTime(r.measuredAt.slice(11, 16)))) return false;
-      return d.notificationLogs.every(n => d.doseEvents.some(e => e.id === n.eventId && e.profileId === n.profileId) && typeof n.text === 'string');
+      if(typeof d.notificationsEnabled!=='boolean'||typeof d.privatePreview!=='boolean'||!['online','offline','failure'].includes(d.simulationMode))return false;
+      return d.notificationLogs.every(n => d.doseEvents.some(e => e.id === n.eventId && e.profileId === n.profileId) && typeof n.text === 'string' &&
+        (n.legacy===true || (['N1','N2','N3'].includes(n.kind)&&d.accounts.some(a=>a.id===n.recipientId)&&validDate(n.date)&&d.doseEvents.some(e=>e.id===n.eventId&&e.date===n.date)&&typeof n.round==='string'&&typeof n.operationId==='string'&&validStamp(n.createdAt)&&['delivered','failed','pending','suppressed'].includes(n.deliveryState)&&Number.isInteger(n.deliveryAttempts)&&n.deliveryAttempts>0)));
     } catch { return false; }
   }
-  return { DAY, SLOTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult };
+  return { DAY, SLOTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult, notificationDefaults, simulatedRemote, notificationEligible, notificationRound, evaluateNotifications, sendN3, retryNotifications, syncSimulation, focusCandidates };
 });

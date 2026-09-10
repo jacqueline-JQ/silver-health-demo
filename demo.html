@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>药安心 · 家庭协同演示</title><link rel="stylesheet" href="demo.css"><script src="demo.js" defer></script></head>
+<body>
+<svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+  <symbol id="app-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#357b5c"/><path d="M12 34h12l5-13 7 23 5-10h11" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="49" cy="16" r="4" fill="#d7edb7"/></symbol>
+  <symbol id="phone-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#39c667"/><path d="m21 13 8 13-6 5c4 6 6 8 11 11l5-6 13 8c-2 8-7 10-13 8-13-4-23-15-27-28-1-5 3-10 9-11" fill="white"/></symbol>
+  <symbol id="message-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#38c965"/><path d="M53 30c0 12-12 20-28 17l-12 5 3-12C3 25 15 12 32 12c13 0 21 8 21 18" fill="white"/></symbol>
+  <symbol id="camera-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#cdd2d8"/><path d="M11 23h12l4-7h11l4 7h11v28H11Z" fill="#434b55"/><circle cx="32" cy="36" r="11" fill="#171d26" stroke="#959ea6" stroke-width="4"/><circle cx="49" cy="27" r="2" fill="#f9e2a9"/></symbol>
+  <symbol id="settings-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#a4aab4"/><circle cx="32" cy="32" r="23" fill="none" stroke="#323d4b" stroke-width="7" stroke-dasharray="8 3"/><circle cx="32" cy="32" r="16" fill="none" stroke="#f1f2f4" stroke-width="3"/><circle cx="32" cy="32" r="8" fill="#505965"/></symbol>
+  <symbol id="calendar-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#fff"/><path d="M0 15Q0 0 15 0h34q15 0 15 15v7H0Z" fill="#ed635d"/><text x="32" y="16" text-anchor="middle" fill="white" font-size="10">星期日</text><text x="32" y="53" text-anchor="middle" fill="#273039" font-size="32" font-family="system-ui">13</text></symbol>
+  <symbol id="weather-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#549bec"/><circle cx="26" cy="24" r="12" fill="#ffe062"/><path d="M18 45c-10-6-4-18 6-15 5-14 22-10 23 1 14-1 17 18 1 18H24" fill="#fff"/></symbol>
+  <symbol id="music-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#fa596f"/><path d="M27 19v28c-2 10-19 8-17-2 1-7 10-8 14-5V17l28-6v28c-2 11-19 10-17 0 1-6 10-9 14-5V19Z" fill="white"/></symbol>
+  <symbol id="browser-mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#fff"/><circle cx="32" cy="32" r="26" fill="#58b4e7"/><circle cx="32" cy="32" r="23" fill="none" stroke="#d8f2fc" stroke-width="2" stroke-dasharray="1 4"/><path d="m45 18-7 19-19 9 8-19Z" fill="#fff"/><path d="m45 18-7 19-11-10Z" fill="#f26765"/></symbol>
+</defs></svg>
+<header class="stage-heading"><a href="index.html" class="wordmark"><svg><use href="#app-mark"/></svg><span>药安心</span></a><span>家庭协同 · 比赛演示</span></header>
+<main class="stage-layout">
+  <section class="phone-stage" aria-label="模拟手机舞台">
+    <div class="device" id="phone" data-os="ios" data-view="desktop"><div class="screen" id="screen">
+      <div class="wallpaper" aria-hidden="true"></div>
+      <div class="status-bar" aria-label="模拟状态栏"><span id="status-time">21:15</span><span class="camera-island" aria-hidden="true"></span><div class="status-indicators" aria-label="模拟满格信号与电量"><span class="signal">▂▄▆█</span><svg viewBox="0 0 20 14"><path d="M1 4q9-7 18 0M4 7q6-5 12 0M7 10q3-3 6 0" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="13" r="1" fill="currentColor"/></svg><span class="battery"><i></i></span></div></div>
+      <div class="desktop" id="desktop">
+        <div class="desktop-widget"><p id="desktop-date">9月13日 星期日</p><strong id="desktop-time">21:15</strong><span>留一点安心，给家人。</span></div>
+        <div class="app-grid">
+          <button class="desktop-app" id="launch-app"><svg><use href="#app-mark"/></svg><span>药安心</span></button>
+          <div class="desktop-app decorative"><svg><use href="#calendar-mark"/></svg><span>日历</span></div>
+          <div class="desktop-app decorative"><svg><use href="#weather-mark"/></svg><span>天气</span></div>
+          <div class="desktop-app decorative"><svg><use href="#camera-mark"/></svg><span>相机</span></div>
+          <div class="desktop-app decorative"><svg><use href="#message-mark"/></svg><span>信息</span></div>
+          <div class="desktop-app decorative"><svg><use href="#settings-mark"/></svg><span>设置</span></div>
+        </div>
+        <div class="desktop-search" aria-hidden="true">⌕ 搜索</div>
+        <div class="dock" aria-label="桌面装饰图标"><svg><use href="#phone-mark"/></svg><svg><use href="#browser-mark"/></svg><svg><use href="#message-mark"/></svg><svg><use href="#music-mark"/></svg></div>
+      </div>
+      <div class="app-container" id="app-container" inert aria-hidden="true"><iframe id="app-frame" src="./index.html?demo=1" title="药安心应用" inert tabindex="-1"></iframe></div>
+      <div class="notification-banner" id="banner" inert aria-hidden="true"><button class="banner-open" id="banner-open"><span class="banner-heading"><svg><use href="#app-mark"/></svg><strong>药安心</strong><span>刚刚</span></span><strong id="banner-title"></strong><span id="banner-body"></span></button><button id="banner-close" class="banner-close" aria-label="关闭模拟通知横幅">×</button></div>
+      <button id="home-indicator" class="home-indicator" aria-label="返回模拟桌面"><span></span></button>
+    </div></div>
+    <p class="stage-caption">网页模拟手机 · 辅助系统图标仅作桌面示意</p>
+  </section>
+  <aside class="controls" aria-label="比赛演示控制区">
+    <span class="eyebrow">可交互原型 · 本地演示</span><h1>一份记录，<br>两份安心。</h1><p class="control-intro">从家庭建计划，到长辈本人打卡。桌面、提醒与应用共同完成这段流程。</p>
+    <div class="ready-status" id="ready-status" role="status">正在准备应用…</div>
+    <div class="recovery" id="recovery" hidden><p>应用暂未就绪，可重试连接或单独打开应用。</p><button id="retry-ready">重试连接</button><a href="index.html">独立打开应用</a></div>
+    <div class="system-picker" role="group" aria-label="模拟系统"><button data-os="ios" aria-pressed="true">iOS</button><button data-os="harmonyos" disabled title="第5步完成">鸿蒙</button><button data-os="android" disabled title="第5步完成">安卓</button></div>
+    <div class="control-section"><h2>01 · 当前会话</h2><label for="account-select">演示账号</label><select id="account-select"></select><label for="profile-select">当前长辈</label><select id="profile-select"></select><div class="control-actions"><button id="open-app" class="primary">打开应用</button><button id="show-desktop">返回桌面</button></div></div>
+    <div class="control-section"><h2>02 · 受控演示时间</h2><div class="time-controls"><label>日期偏移<input id="day-offset" type="number" value="0" min="0" max="31" step="1"></label><label>北京时间<input id="clock-time" type="time" value="21:15"></label></div><button id="apply-clock">应用时间</button><div class="preset-times" aria-label="演示时刻预设"><button data-clock="07:55">早餐前</button><button data-clock="08:00">早餐到点</button><button data-clock="11:00">早餐超时</button><button data-clock="15:50">午餐15:50</button><button data-clock="16:20">16:20</button><button data-clock="23:55">23:55</button><button data-clock="00:10" data-offset="1">次日00:10</button></div></div>
+    <div class="control-section"><h2>03 · 模拟系统通知</h2><div class="scene-actions"><button data-scene="N1">N1 到点提醒</button><button data-scene="N2">N2 超时提醒</button><button data-scene="N3">N3 子女提醒</button></div><p class="control-note">接收账号需显式切换。N3 由子女在应用中点击“提醒 TA”。</p><label for="notice-select">当前账号的通知</label><select id="notice-select"></select><div class="control-actions"><button id="replay-notice">重播横幅</button><button id="open-notice">打开关联记录</button></div><p class="control-note" id="delivery-status">尚无通知</p></div>
+    <details class="advanced-controls"><summary>模拟设置与异常场景</summary><label class="check-row"><input id="notifications-enabled" type="checkbox" checked>启用模拟通知</label><label class="check-row"><input id="private-preview" type="checkbox">锁屏简洁预览</label><label for="simulation-mode">连接状态（模拟）</label><select id="simulation-mode"><option value="online">正常模拟</option><option value="offline">离线／待同步模拟</option><option value="failure">通知发送失败模拟</option></select><div class="control-actions"><button id="sync-records">模拟接收同步</button><button id="retry-notices">重试原通知</button></div><p class="control-note">离线确认仍保存在本机；模拟远端可能仍提示暂未收到记录。此处无真实网络或系统权限变化。</p><button id="reset-demo" class="danger">恢复初始演示数据…</button></details>
+    <p class="control-feedback" id="control-feedback" role="status" aria-live="polite">模拟系统通知，不调用真实推送服务。</p><p class="control-safety">仅供演示，不提供医疗建议，不用于真实用药决策。</p>
+  </aside>
+</main>
+</body></html>

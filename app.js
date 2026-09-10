@@ -6,6 +6,7 @@
   const VIEW_KEY = 'silver-health-view-v1';
   const DAY = '2026-09-13';
   const R = window.MedRules;
+  const Bridge = window.DemoBridge;
   const { SLOTS, STATUS } = R;
   const TYPES = {
     blood_pressure: { name: '血压', fields: [['systolic', '收缩压', 'mmHg'], ['diastolic', '舒张压', 'mmHg'], ['pulse', '脉搏', '次/分']] },
@@ -64,6 +65,14 @@
   let undoTimer;
   let toastTimer;
   let overdueOpen = false;
+  let stageVisible = !Bridge.embedded;
+  let themeReady = !Bridge.embedded;
+  let visitId = id('visit');
+  const dismissedFocus = new Set();
+  const shownBanners = new Set();
+  const drafts = new Map();
+  const sessionViews = new Map();
+  let focusScheduled = false;
 
   const account = () => data.accounts.find(a => a.id === view.accountId);
   const family = () => data.families.find(f => f.id === account().familyId);
@@ -89,14 +98,144 @@
   // 业务修改集中保存；存储失败时明确提示，不把临时数据说成已经持久化。
   function commit(change) {
     const next = clone(data);
-    try { change(next); } catch (error) { toast(error.message || '操作未保存，请检查输入。', 'warning'); return false; }
+    try { change(next); R.evaluateNotifications(next); } catch (error) { toast(error.message || '操作未保存，请检查输入。', 'warning'); return false; }
     if (!validData(next)) { toast('数据校验失败，未保存任何修改。', 'warning'); return false; }
     data = next;
     if (!invalidStorage) {
       try { localStorage.setItem(DATA_KEY, JSON.stringify(data)); storageWarning = ''; }
       catch { storageWarning = '本地保存失败，本次操作仅在当前页面有效；刷新后可能丢失。'; }
     }
+    queueMicrotask(()=>{publishState();scheduleFocus();});
     return true;
+  }
+
+  const sessionKey = () => `${view.accountId}|${profile()?.id || ''}`;
+  const workModal = m => m && ['medicine','medicine-confirm','health-form','health-confirm','chat'].includes(m.type);
+  function preserveDraft() {
+    sessionViews.set(sessionKey(),{view:clone(view),scroll:app.querySelector('.app-main')?.scrollTop||0});
+    if(workModal(modal)) {
+      modal.scrollPositions ||= {};modal.scrollPositions[modal.picker?'picker':modal.type]=app.querySelector('.modal-sheet')?.scrollTop||0;
+      drafts.set(sessionKey(),{modal:clone(modal),view:clone(view)});
+    }
+  }
+  function clearSavedDraft() { drafts.delete(sessionKey()); }
+  function resumeDraft() {
+    const saved=drafts.get(sessionKey());
+    if(!saved || !canAccess(saved.modal.targetId))return toast('没有可继续的输入。','warning');
+    view={...saved.view,accountId:view.accountId};modal=clone(saved.modal);render();
+  }
+  function switchAccount(accountId) {
+    if(!data.accounts.some(a=>a.id===accountId))throw Error('演示账号不存在');
+    document.querySelectorAll('.modal-exit-copy').forEach(el=>{el.remove();});
+    preserveDraft();closeModal(false);view.accountId=accountId;undo=null;overdueOpen=false;dismissedFocus.clear();visitId=id('visit');
+    const saved=sessionViews.get(sessionKey());view={...view,...(saved?.view||{page:'home',planTab:'active',historyDate:today()}),accountId};
+    render();if(drafts.has(sessionKey()))resumeDraft();else scheduleFocus();publishState();
+  }
+  function switchProfile(profileId,restore=true) {
+    if(account().role!=='child'||!canAccess(profileId))throw Error('无权选择此档案');
+    document.querySelectorAll('.modal-exit-copy').forEach(el=>{el.remove();});
+    preserveDraft();
+    if(!commit(next=>{next.accounts.find(a=>a.id===view.accountId).selectedProfileId=profileId;}))return;
+    closeModal(false);view.page='home';overdueOpen=false;render();if(restore&&drafts.has(sessionKey()))resumeDraft();
+  }
+  function notificationList() {
+    return data.notificationLogs.filter(n=>n.kind&&n.recipientId===view.accountId&&canAccess(n.profileId)).map(n=>{
+      const e=data.doseEvents.find(e=>e.id===n.eventId),currentState=R.stateOf(n.kind==='N2'?R.simulatedRemote(e):e,data);
+      return {...n,currentState,...(['taken','not_taken','skipped','cancelled'].includes(currentState)?{title:'记录已更新',text:`${e.date} ${e.slot} · ${e.snapshot.name}，最新状态：${STATUS[currentState]}。打开查看最新记录。`}:{})};
+    });
+  }
+  function bridgeState() {
+    return {account:{id:account().id,name:account().name,role:account().role,fontMode:account().fontMode},accounts:data.accounts.map(a=>({id:a.id,name:a.name,role:a.role})),profiles:profiles().map(p=>({id:p.id,name:p.name})),profileId:profile()?.id||'',theme:data.notificationStyle,date:today(),dateOffset:data.dateOffset,time:data.demoTime,notificationsEnabled:data.notificationsEnabled,privatePreview:data.privatePreview,simulationMode:data.simulationMode,notifications:notificationList(),page:view.page,modalActive:!!modal};
+  }
+  function publishState() {
+    if(!Bridge.embedded||!themeReady)return;
+    document.documentElement.dataset.os=data.notificationStyle;
+    Bridge.send('STATE',bridgeState());
+    if(!data.notificationsEnabled)return;
+    const notices=notificationList().filter(n=>n.deliveryState==='delivered'&&!shownBanners.has(n.id)&&R.notificationEligible(data,n.kind,data.doseEvents.find(e=>e.id===n.eventId)));
+    notices.forEach(n=>{shownBanners.add(n.id);});
+    const last=notices.at(-1);if(last)Bridge.send('BANNER',{notification:last,privatePreview:data.privatePreview});
+  }
+  const focusKey = e => `${visitId}|${e.id}|${R.notificationRound(data,e,'N1')}`;
+  function scheduleFocus() {
+    if(focusScheduled)return;focusScheduled=true;
+    queueMicrotask(()=>{
+      focusScheduled=false;
+      if(!stageVisible||!themeReady||modal||view.page!=='home'||account().role!=='elder'||document.activeElement?.matches('input,textarea,select'))return;
+      const queue=R.focusCandidates(data,view.accountId).filter(e=>!dismissedFocus.has(focusKey(e))).map(e=>e.id);
+      if(queue.length)openModal('focus',{queue,eventId:queue[0],position:1,total:queue.length});
+    });
+  }
+  function locateTask(e) {
+    view.planTab='history';view.historyDate=e.date;view.page='plans';closeModal(false);render();
+    requestAnimationFrame(()=>app.querySelector(`[data-task-id="${CSS.escape(e.id)}"]`)?.scrollIntoView({block:'center',behavior:'instant'}));
+  }
+  function dismissFocus() {
+    const context=modal;const e=data.doseEvents.find(e=>e.id===context.eventId);
+    for(const taskId of context.queue||[context.eventId]) {const task=data.doseEvents.find(t=>t.id===taskId);if(task)dismissedFocus.add(focusKey(task));}
+    closeModal(false);if(e)locateTask(e);else render();
+  }
+  function advanceFocus(context,eventId) {
+    const event=data.doseEvents.find(e=>e.id===eventId);if(event)dismissedFocus.add(focusKey(event));
+    closeModal(false);render();
+    if(!context)return;
+    const remaining=(context.queue||[]).filter(taskId=>{const e=data.doseEvents.find(e=>e.id===taskId);return e&&R.canDeclare(data,view.accountId,e)&&!resolved(e)&&!R.protectedAt(e,now())&&taskId!==eventId;});
+    if(remaining.length)openModal('focus',{...context,queue:remaining,eventId:remaining[0],position:context.position+1});
+  }
+  function focusContent() {
+    const e=data.doseEvents.find(e=>e.id===modal.eventId);
+    if(!e||!canAccess(e.profileId))return ['无法查看','<p>任务不存在或授权已失效。</p>'];
+    if(e.cancelledAt)return ['提醒已失效','<p>该次任务已取消，不能继续打卡。</p>'];
+    if(resolved(e))return ['该任务已有记录',`<p>${esc(e.snapshot.name)}</p>${badge(e)}${recordDetails(e)}`];
+    return [stateOf(e)==='overdue'?'这次用药还没有记录':'该吃药啦！',`<div class="focus-content"><p class="focus-progress">第 ${modal.position} / ${modal.total} 项 · 可关闭后再处理</p><div class="focus-clock">${icon('clock')}</div><p>${e.date} · ${e.slot} · 提醒 ${e.scheduledTime}</p><h3>${esc(e.snapshot.name)}</h3><p class="focus-dose">计划 ${esc(e.snapshot.doseValue)} ${esc(e.snapshot.doseUnit)} ${mealTag(e)}</p>${e.snapshot.note?`<p>${esc(e.snapshot.note)}</p>`:''}${badge(e)}${doseActions(e)}<p class="helper-text">仅记录本人声明，不提供用药建议。</p></div>`];
+  }
+  function openNotification(ref) {
+    if(modal?.type==='reset')return {message:'请先完成或关闭恢复确认，再打开关联通知'};
+    const n=data.notificationLogs.find(n=>n.id===ref.notificationId&&n.kind);
+    if(!n||n.eventId!==ref.eventId||n.profileId!==ref.profileId||n.date!==ref.date||n.recipientId!==ref.recipientId||n.recipientId!==view.accountId||!canAccess(n.profileId))throw Error('通知已失效或当前账号无权查看');
+    const e=data.doseEvents.find(e=>e.id===n.eventId);if(!e)throw Error('原任务已不存在');
+    preserveDraft();
+    if(account().role==='child') {
+      if(profile()?.id!==e.profileId)switchProfile(e.profileId,false);
+      locateTask(e);toast(resolved(e)?'已显示最新记录。':'请查看该次用药记录，子女不能代替打卡。');
+    } else if(e.cancelledAt)openModal('notice-invalid',{message:'该次任务已取消，原提醒已失效。'});
+    else if(resolved(e))openModal('task-detail',{eventId:e.id});
+    else openModal('focus',{queue:[e.id],eventId:e.id,position:1,total:1,notificationId:n.id});
+    publishState();return {message:'已按最新状态打开通知'};
+  }
+  function applyDemoOptions(options) {
+    if(!commit(next=>{Object.assign(next,options);} ))throw Error('模拟设置未保存');
+    render();return {message:'模拟设置已更新'};
+  }
+  function handleDemoMessage(type,p) {
+    if(type==='HELLO') {Bridge.send('READY',bridgeState());return {};}
+    if(type==='THEME') {
+      if(!commit(next=>{next.notificationStyle=p.os;}))throw Error('主题未保存');
+      themeReady=true;document.documentElement.dataset.os=p.os;app.style.visibility='visible';publishState();return {theme:p.os};
+    }
+    if(type==='VISIBILITY') {
+      const resumed=p.visible&&!stageVisible;stageVisible=p.visible;if(resumed){visitId=p.visitId;dismissedFocus.clear();}
+      app.inert=!p.visible;document.activeElement?.blur?.();if(resumed){render();scheduleFocus();}return {};
+    }
+    if(type==='CLOCK') {if(!commit(next=>R.setClock(next,p.dateOffset,p.time)))throw Error('演示时间未保存');render();return {message:`已调整至 ${today()} ${data.demoTime}`};}
+    if(type==='SWITCH_ACCOUNT') {switchAccount(p.accountId);return {};}
+    if(type==='SWITCH_PROFILE') {switchProfile(p.profileId);return {};}
+    if(type==='OPTIONS')return applyDemoOptions(p);
+    if(type==='OPEN_NOTIFICATION')return openNotification(p);
+    if(type==='SCENE') {
+      if(p.kind==='N3') {if(account().role!=='child')throw Error('N3需由已授权子女发起');preserveDraft();navigate('home');return {message:'请在应用中对符合资格的任务点击“提醒 TA”'};}
+      if((p.kind==='N2')!==(account().role==='child'))throw Error(p.kind==='N2'?'请显式切换子女接收账号':'请显式切换长辈接收账号');
+      if(!commit(()=>{}))throw Error('通知检查未完成');
+      const notice=notificationList().filter(n=>n.kind===p.kind&&R.notificationEligible(data,n.kind,data.doseEvents.find(e=>e.id===n.eventId))).at(-1);
+      if(!data.notificationsEnabled)throw Error('模拟通知已关闭，仍可手动记录');
+      if(!notice)throw Error('当前无符合资格的任务：请检查时刻、记录或延后保护');
+      if(notice.deliveryState==='delivered')Bridge.send('BANNER',{notification:notice,privatePreview:data.privatePreview});
+      return {message:notice.deliveryState==='failed'?'模拟发送失败，可重试':notice.deliveryState==='pending'?'模拟待同步':'已展示本轮提醒，重复触发不新增记录'};
+    }
+    if(type==='SYNC') {if(!commit(next=>R.syncSimulation(next)))throw Error('模拟同步未完成');render();return {message:'模拟接收完成，保留原确认时间'};}
+    if(type==='RETRY') {if(!commit(next=>R.retryNotifications(next)))throw Error('重试未完成');render();return {message:'已按最新资格重试原通知'};}
+    if(type==='RESET_REQUEST') {preserveDraft();openModal('reset');return {message:'请在应用内确认恢复初始数据'};}
+    throw Error('不支持的演示动作');
   }
 
   function button(text, action, css = 'button-primary', attrs = '') {
@@ -135,7 +274,8 @@
   }
 
   function recordDetails(event) {
-    return `${event.recordedAt ? `<p class="helper-text">${event.recordedAt >= event.deadlineAt ? '补记 · ' : ''}${esc(displayTime(event.recordedAt))}记录 · ${esc(author(event))}</p>` : ''}${event.snoozeUntil && !resolved(event) ? `<p class="helper-text">再次提醒：${esc(displayTime(event.snoozeUntil))}</p>` : ''}${event.legacy ? '<p class="helper-text">旧版来源保留；餐时待本人核对，记录时间不代表服药时间。</p>' : ''}`;
+    const last=event.changes.at(-1);
+    return `${event.recordedAt ? `<p class="helper-text">${event.recordedAt >= event.deadlineAt ? '补记 · ' : ''}${esc(displayTime(event.recordedAt))}记录 · ${esc(author(event))}</p>` : ''}${event.snoozeUntil && !resolved(event) ? `<p class="helper-text">再次提醒：${esc(displayTime(event.snoozeUntil))}</p>` : ''}${last?.syncState==='pending'||event.snoozeSyncState==='pending'?'<p class="sync-caption">本机已保存 · 待同步（模拟）。模拟远端可能仍提示暂未收到记录。</p>':''}${last?.syncState==='synced'?`<p class="helper-text">模拟接收：${esc(displayTime(last.receivedAt))} · 保留原本机确认时间</p>`:''}${event.legacy ? '<p class="helper-text">旧版来源保留；餐时待本人核对，记录时间不代表服药时间。</p>' : ''}`;
   }
 
   const mealTag = event => planFor(event).meal ? `<span class="meal-tag">${esc(planFor(event).meal)}</span>` : '';
@@ -148,7 +288,7 @@
 
   function medCard(event) {
     const plan = planFor(event);
-    return `<article class="card med-card color-${esc(plan.color || 'blue')}" id="task-${event.id}" data-event="${event.id}"><div class="med-card-top"><div class="med-card-title-wrap"><h3>${esc(plan.name)} ${mealTag(event)}</h3><div class="med-meta"><span>${icon('pill')}计划 ${esc(plan.doseValue)} ${esc(plan.doseUnit)}/次</span><span>${icon('clock')}${event.slot} ${event.scheduledTime}</span></div></div>${badge(event)}</div>${recordDetails(event)}${doseActions(event)}${button('查看记录详情', 'task-detail', 'text-button', `data-id="${event.id}"`)}</article>`;
+    return `<article class="card med-card color-${esc(plan.color || 'blue')}" id="task-${esc(event.id)}" data-event="${esc(event.id)}" data-task-id="${esc(event.id)}"><div class="med-card-top"><div class="med-card-title-wrap"><h3>${esc(plan.name)} ${mealTag(event)}</h3><div class="med-meta"><span>${icon('pill')}计划 ${esc(plan.doseValue)} ${esc(plan.doseUnit)}/次</span><span>${icon('clock')}${event.slot} ${event.scheduledTime}</span></div></div>${badge(event)}</div>${recordDetails(event)}${doseActions(event)}${button('查看记录详情', 'task-detail', 'text-button', `data-id="${event.id}"`)}</article>`;
   }
 
   function homePage() {
@@ -192,7 +332,7 @@
 
   function schedule(events, remind = true) {
     if (!events.length) return empty('暂无用药记录');
-    return `<div class="schedule-list">${Object.entries(SLOTS).filter(([slot]) => events.some(e => e.slot === slot)).map(([slot]) => `<section class="schedule-group"><div class="schedule-group-title">${icon('clock')}${slot}</div>${events.filter(e => e.slot === slot).map(e => `<div class="schedule-row"><div class="schedule-name"><strong>${esc(planFor(e).name)} ${mealTag(e)}</strong><span>计划 ${esc(planFor(e).doseValue)} ${esc(planFor(e).doseUnit)}/次 · 提醒 ${e.scheduledTime}</span>${recordDetails(e)}</div><div class="schedule-status">${badge(e)}${button('查看当次', 'task-detail', 'text-button', `data-id="${e.id}"`)}${remind && account().role === 'child' ? reminderButton(e) : ''}</div></div>`).join('')}</section>`).join('')}</div>`;
+    return `<div class="schedule-list">${Object.entries(SLOTS).filter(([slot]) => events.some(e => e.slot === slot)).map(([slot]) => `<section class="schedule-group"><div class="schedule-group-title">${icon('clock')}${slot}</div>${events.filter(e => e.slot === slot).map(e => `<div class="schedule-row" data-task-id="${esc(e.id)}"><div class="schedule-name"><strong>${esc(planFor(e).name)} ${mealTag(e)}</strong><span>计划 ${esc(planFor(e).doseValue)} ${esc(planFor(e).doseUnit)}/次 · 提醒 ${e.scheduledTime}</span>${recordDetails(e)}</div><div class="schedule-status">${badge(e)}${button('查看当次', 'task-detail', 'text-button', `data-id="${e.id}"`)}${remind && account().role === 'child' ? reminderButton(e) : ''}</div></div>`).join('')}</section>`).join('')}</div>`;
   }
 
   function plansPage() {
@@ -233,16 +373,18 @@
 
   function mePage() {
     const a = account();
-    return `${header('我的')}<section class="profile-card"><span class="avatar">${esc(a.avatar)}</span><div class="profile-info"><h2>${esc(a.name)}</h2><p>${a.age} 岁 · ${a.role === 'elder' ? '长辈账号' : '子女账号'}</p></div><span class="pill pill-green">演示账号</span></section>${section('显示设置', `<div class="settings-list"><div class="setting-row"><span class="setting-leading">${icon('settings')}</span><div class="setting-content"><strong>字号模式</strong></div><div class="font-segmented" role="group" aria-label="字号模式">${[['normal', '标准'], ['elder', '大字']].map(([key, label]) => button(label, 'font', a.fontMode === key ? 'is-active' : '', `data-value="${key}" aria-pressed="${a.fontMode === key}"`)).join('')}</div></div></div>`)}${section('家庭与账号', `<div class="settings-list">${button(`<span class="setting-leading">${icon('users')}</span><span class="setting-content"><strong>${esc(family().name)}</strong><span>${profiles().map(p => esc(p.name)).join('、')}</span></span>${icon('chevron')}`, 'family', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('user')}</span><span class="setting-content"><strong>首次使用引导</strong><span>新建本地演示账号</span></span>${icon('chevron')}`, 'onboarding', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('bell')}</span><span class="setting-content"><strong>模拟提醒记录</strong></span>${icon('chevron')}`, 'notifications', 'setting-row setting-button')}</div>`)}${section('切换演示账号', accountOptions())}${section('演示设置', `<div class="settings-list">${button(`<span class="setting-leading">${icon('clock')}</span><span class="setting-content"><strong>演示时间</strong><span>${today()} ${data.demoTime}</span></span>${icon('chevron')}`, 'clock', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('info')}</span><span class="setting-content"><strong>演示与隐私说明</strong></span>${icon('chevron')}`, 'about', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('back')}</span><span class="setting-content"><strong>恢复初始演示数据</strong></span>${icon('chevron')}`, 'reset', 'setting-row setting-button')}</div>`)}${safety()}`;
+    return `${header('我的')}<section class="profile-card"><span class="avatar">${esc(a.avatar)}</span><div class="profile-info"><h2>${esc(a.name)}</h2><p>${a.age} 岁 · ${a.role === 'elder' ? '长辈账号' : '子女账号'}</p></div><span class="pill pill-green">演示账号</span></section>${section('显示设置', `<div class="settings-list"><div class="setting-row"><span class="setting-leading">${icon('settings')}</span><div class="setting-content"><strong>字号模式</strong></div><div class="font-segmented" role="group" aria-label="字号模式">${[['normal', '标准'], ['elder', '大字']].map(([key, label]) => button(label, 'font', a.fontMode === key ? 'is-active' : '', `data-value="${key}" aria-pressed="${a.fontMode === key}"`)).join('')}</div></div></div>`)}${section('家庭与账号', `<div class="settings-list">${button(`<span class="setting-leading">${icon('users')}</span><span class="setting-content"><strong>${esc(family().name)}</strong><span>${profiles().map(p => esc(p.name)).join('、')}</span></span>${icon('chevron')}`, 'family', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('user')}</span><span class="setting-content"><strong>首次使用引导</strong><span>新建本地演示账号</span></span>${icon('chevron')}`, 'onboarding', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('bell')}</span><span class="setting-content"><strong>模拟提醒记录</strong></span>${icon('chevron')}`, 'notifications', 'setting-row setting-button')}</div>`)}${section('切换演示账号', accountOptions())}${section('演示设置', `<div class="settings-list">${button(`<span class="setting-leading">${icon('bell')}</span><span class="setting-content"><strong>模拟通知设置</strong><span>${data.notificationsEnabled?'已开启':'未开启'} · ${data.privatePreview?'简洁预览':'详细预览'}</span></span>${icon('chevron')}`,'notification-settings','setting-row setting-button')}${button(`<span class="setting-leading">${icon('clock')}</span><span class="setting-content"><strong>演示时间</strong><span>${today()} ${data.demoTime}</span></span>${icon('chevron')}`, 'clock', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('info')}</span><span class="setting-content"><strong>演示与隐私说明</strong></span>${icon('chevron')}`, 'about', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('back')}</span><span class="setting-content"><strong>恢复初始演示数据</strong></span>${icon('chevron')}`, 'reset', 'setting-row setting-button')}</div>`)}${safety()}`;
   }
 
   function render() {
+    document.documentElement.dataset.os=data.notificationStyle;
     const scroll = document.querySelector('.app-main')?.scrollTop || 0;
     const pages = { home: homePage, plans: plansPage, health: healthPage, me: mePage };
-    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>本地演示 · ${today()} ${data.demoTime}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${['plans', 'health'].includes(view.page) ? button(icon('plus'), 'quick-add', 'fab', `aria-label="${view.page === 'plans' ? '添加药品打卡计划' : '添加身体数据'}"`) : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', account().role === 'child' ? '首页看板' : '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
+    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>${Bridge.embedded?'本地演示':`本地演示 · ${today()} ${data.demoTime}`}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}${drafts.has(sessionKey())?`<div class="draft-resume">${button('继续未完成的输入','resume-draft','text-button')}</div>`:''}${data.simulationMode!=='online'?`<div class="simulation-note">${data.simulationMode==='offline'?'离线／待同步模拟：所有操作仍保存在本机，无真实远端连接。':'通知发送失败模拟：记录可正常保存。'}</div>`:''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${['plans', 'health'].includes(view.page) ? button(icon('plus'), 'quick-add', 'fab', `aria-label="${view.page === 'plans' ? '添加药品打卡计划' : '添加身体数据'}"`) : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', account().role === 'child' ? '首页看板' : '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
     document.querySelector('.app-main').scrollTop = scroll;
     renderModal();
     rememberView();
+    publishState();
   }
 
   function navigate(page) {
@@ -254,6 +396,7 @@
     const heading = app.querySelector('h1');
     heading?.setAttribute('tabindex', '-1');
     heading?.focus({ preventScroll: true });
+    scheduleFocus();
   }
 
   function toast(message, type = 'success', allowUndo = false) {
@@ -271,21 +414,36 @@
     }
     modal = { type, ...fields };
     renderModal();
+    publishState();
   }
 
   function closeModal(restore = true) {
     if (restore && modal?.picker) { modal.picker = null; renderModal(); return; }
     if (restore && modal?.errorLayer) { dismissErrors(); return; }
+    if(restore&&modal)animateModalExit();
+    if (restore && modal?.type==='focus') { dismissFocus();return; }
+    if (restore && modal?.focusContext) {modal=modal.focusContext;renderModal();return;}
+    const hasDraft=restore&&workModal(modal);if(hasDraft)preserveDraft();
     modal = null;
     document.getElementById('modal-root')?.replaceChildren();
     document.getElementById('page-region')?.removeAttribute('inert');
     document.querySelector('.bottom-nav')?.removeAttribute('inert');
     document.querySelector('.fab')?.removeAttribute('inert');
     document.body.classList.remove('modal-open');
+    if(hasDraft)render();
     if (restore && modalReturnFocus) {
       const target = [...app.querySelectorAll('[data-action]')].find(e => e.dataset.action === modalReturnFocus.action && e.dataset.id === modalReturnFocus.id && e.dataset.page === modalReturnFocus.page);
       (target || app.querySelector('.nav-item.is-active'))?.focus({ preventScroll: true });
     }
+  }
+  function animateModalExit() {
+    if(!stageVisible||document.documentElement.dataset.input==='keyboard'||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    const sheet=app.querySelector('.modal-sheet');if(!sheet)return;
+    const rect=sheet.getBoundingClientRect(),ghost=sheet.cloneNode(true);ghost.inert=true;ghost.setAttribute('aria-hidden','true');ghost.removeAttribute('role');
+    ghost.querySelectorAll('[id],[data-action],[name]').forEach(el=>{el.removeAttribute('id');el.removeAttribute('data-action');el.removeAttribute('name');});ghost.classList.add('modal-exit-copy');
+    Object.assign(ghost.style,{position:'fixed',top:`${rect.top}px`,left:`${rect.left}px`,width:`${rect.width}px`,height:`${rect.height}px`,maxHeight:'none',margin:'0',zIndex:'300',pointerEvents:'none',animation:'none',transition:'none'});
+    document.body.append(ghost);ghost.scrollTop=sheet.scrollTop;
+    ghost.animate([{transform:'translateY(0)',opacity:1},{transform:'translateY(24px)',opacity:0}],{duration:200,easing:'cubic-bezier(0.23,1,0.32,1)'}).finished.finally(()=>ghost.remove());
   }
 
   function modalFrame(title, content) {
@@ -302,6 +460,10 @@
     root.dataset.contentKey=contentKey;
     const [title, content] = modal.picker ? ['设置提醒时间', timePicker()] : modalContent();
     root.innerHTML = modalFrame(title, content);
+    if(modal.type==='focus') {
+      root.querySelector('.modal-sheet').classList.add('focus-sheet');
+      root.querySelector('.close-button').setAttribute('aria-label','关闭提醒，查看对应时段列表');
+    }
     document.getElementById('page-region').setAttribute('inert', '');
     document.querySelector('.bottom-nav').setAttribute('inert', '');
     document.querySelector('.fab')?.setAttribute('inert', '');
@@ -339,6 +501,9 @@
 
   function modalContent() {
     const m = modal;
+    if(m.type==='focus')return focusContent();
+    if(m.type==='notice-invalid')return ['提醒已失效',`<p>${esc(m.message)}</p>`];
+    if(m.type==='notification-settings')return ['模拟通知设置',`<p>只控制网页内模拟通知，不请求系统权限。</p><label class="consent-row"><input type="checkbox" data-notice-option="notificationsEnabled" ${data.notificationsEnabled?'checked':''}>启用模拟通知</label><label class="consent-row"><input type="checkbox" data-notice-option="privatePreview" ${data.privatePreview?'checked':''}>模拟锁屏使用简洁预览</label><p class="helper-text">关闭后仍可查看和手动记录。${data.notificationsEnabled?'模拟横幅已开启':'系统通知未开启（模拟）'}</p>`];
     if (m.type === 'accounts') return ['切换演示账号', accountOptions()];
     if (m.type === 'profiles') return ['查看哪位长辈', targetOptions('select-profile')];
     if (m.type === 'target') return ['为哪位长辈添加', targetOptions('select-target')];
@@ -367,8 +532,8 @@
     if (m.type === 'import') return ['模拟设备导入', `<p>记录对象：<strong>${esc(targetName())}</strong></p><p>将新增 3 条${TYPES[m.healthType].name}演示记录，来源标为“模拟设备导入”。</p><div class="confirm-banner">${icon('info')}预设数据，不连接设备，不用于健康判断。同一档案的同类示例不会重复导入。</div><div class="form-footer">${button('确认模拟导入', 'confirm-import')}</div>`];
     if (m.type === 'family') return ['我的家庭组', `<h3>${esc(family().name)}</h3><p>本地演示邀请码：<strong>${esc(family().inviteCode)}</strong></p><div class="target-list">${profiles().map(p => `<div class="setting-row"><span class="avatar">${esc(p.avatar)}</span><span>${esc(p.name)} · ${esc(account().role === 'elder' ? '本人' : p.relation)}</span></div>`).join('')}</div><div class="confirm-banner">${icon('lock')}本机模拟授权。子女可协助录入，不能代打卡；未接入真实身份验证。</div>`];
     if (m.type === 'notifications') {
-      const logs = data.notificationLogs.filter(n => canAccess(n.profileId)).slice().reverse();
-      return ['模拟提醒记录', logs.length ? `<div class="record-list">${logs.map(n => `<article class="record-row"><div><strong>${esc(n.text)}</strong><span>${n.sentAt} · 本地模拟，未发送消息</span></div></article>`).join('')}</div>` : '<p>暂无模拟提醒记录</p>'];
+      const logs = data.notificationLogs.filter(n => canAccess(n.profileId)&&(n.legacy||n.recipientId===view.accountId||n.fromAccountId===view.accountId)).slice().reverse();
+      return ['模拟提醒记录', logs.length ? `<div class="record-list">${logs.map(n => `<article class="record-row"><div><strong>${esc(n.title||'历史模拟提醒')}</strong><span>${esc(n.text)}</span><span>${esc(displayTime(n.createdAt||n.sentAt))} · ${esc({delivered:'已展示（模拟）',pending:'待同步（模拟）',failed:'发送失败（模拟）',suppressed:'已抑制'}[n.deliveryState]||'历史模拟记录')}</span>${n.recipientId===view.accountId?button('查看最新记录','open-notice','text-button',`data-id="${esc(n.id)}"`):''}</div></article>`).join('')}</div>` : '<p>暂无模拟提醒记录</p>'];
     }
     if (m.type === 'about') return ['演示与隐私说明', '<p>本版本仅用于复客松演示，不提供医疗建议，不用于真实用药决策。</p><p>数据保存在此浏览器内，切换本地演示账号可查看同一份家庭记录。跨手机同步、微信登录、推送、设备连接均未接入真实服务。请勿录入真实患者信息或处方。</p><p>本地角色限制用于演示产品分工，不是生产环境的安全访问控制；共享此浏览器的人可以切换账号查看演示数据。</p>'];
     if (m.type === 'reset') return ['恢复初始演示数据？', '<p>将清除本原型中新增的账号、计划、打卡和身体数据，恢复张阿姨和小李的初始样例。其他网站的数据不受影响。</p><div class="form-footer">' + button('取消', 'close-modal', 'button-secondary') + button('确认恢复', 'confirm-reset', 'button-danger') + '</div>'];
@@ -504,13 +669,13 @@
   }
 
   function recordDose(eventId, status, options = {}) {
+    const context=modal?.type==='focus'?clone(modal):modal?.focusContext;
     let operation;
     if (!commit(next => { operation = R.recordDose(next, view.accountId, eventId, status, options); })) return false;
     clearTimeout(undoTimer);
     undo = { ...operation, accountId: view.accountId, expires: Date.now() + 5000 };
     undoTimer = setTimeout(() => { undo = null; }, 5000);
-    closeModal(false);
-    render();
+    advanceFocus(context,eventId);
     toast(`已记录为“${STATUS[status]}”。`, 'success', true);
     return true;
   }
@@ -596,6 +761,7 @@
 
   app.addEventListener('change', event => {
     const field = event.target;
+    if(field.dataset.noticeOption)return applyDemoOptions({[field.dataset.noticeOption]:field.checked});
     if (field.id === 'history-date' && field.value) { view.historyDate = field.value; render(); return; }
     if (!modal) return;
     if (modal.picker) return;
@@ -621,6 +787,11 @@
     const value = target.dataset.value;
     const itemId = target.dataset.id;
     if (action === 'navigate') return navigate(target.dataset.page);
+    if(action==='resume-draft')return resumeDraft();
+    if(action==='open-notice') {
+      const n=data.notificationLogs.find(n=>n.id===itemId);if(!n)return;
+      try {openNotification({notificationId:n.id,eventId:n.eventId,profileId:n.profileId,date:n.date,recipientId:n.recipientId});}catch(error){toast(error.message,'warning');}return;
+    }
     if (action === 'history' || action==='calendar-date') { view.historyDate=target.dataset.date||today();view.planTab='history';return navigate('plans'); }
     if (action === 'summary-health' && TYPES[value]) { view.healthType=value;return navigate('health'); }
     if (action === 'dismiss-errors') return dismissErrors();
@@ -636,10 +807,10 @@
       const setting=modal.draft.slotSettings[target.dataset.slot];setting.meal=setting.meal===target.dataset.meal?'':target.dataset.meal;reconcileMedicineErrors();renderModal();return;
     }
     if (action === 'close-modal') return closeModal();
-    if (['accounts', 'clock', 'family', 'about', 'notifications', 'reset'].includes(action)) return openModal(action);
+    if (['accounts', 'clock', 'family', 'about', 'notifications', 'notification-settings', 'reset'].includes(action)) {preserveDraft();return openModal(action);}
     if (action === 'profiles' && account().role === 'child') return openModal('profiles');
-    if (action === 'switch-account' && data.accounts.some(a => a.id === itemId)) { view.accountId = itemId; undo = null; overdueOpen = false; return navigate('home'); }
-    if (action === 'select-profile' && account().role === 'child' && canAccess(itemId)) { commit(next => { next.accounts.find(a => a.id === view.accountId).selectedProfileId = itemId; }); closeModal(false); render(); return; }
+    if (action === 'switch-account' && data.accounts.some(a => a.id === itemId)) return switchAccount(itemId);
+    if (action === 'select-profile' && account().role === 'child' && canAccess(itemId)) return switchProfile(itemId);
     if (action === 'overdue') { overdueOpen = !overdueOpen; render(); return; }
     if (action === 'font' && ['normal', 'elder'].includes(value)) { commit(next => { next.accounts.find(a => a.id === view.accountId).fontMode = value; }); render(); return; }
     if (action === 'plan-tab' && ['active', 'inactive', 'history'].includes(value)) { view.planTab = value; render(); return; }
@@ -656,12 +827,12 @@
     if (action === 'save-med' && modal?.type === 'medicine-confirm' && canAccess(modal.targetId)) {
       const d = modal.draft; const pid = modal.targetId;
       const editing = modal.planId;
-      if (commit(next => { R.savePlan(next, view.accountId, { ...d, source: d.assisted ? '手动输入 · 家属协助' : '手动输入' }, pid, editing); })) { view.planTab = 'active'; selectTargetForChild(pid); navigate('plans'); toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
+      if (commit(next => { R.savePlan(next, view.accountId, { ...d, source: d.assisted ? '手动输入 · 家属协助' : '手动输入' }, pid, editing); })) { clearSavedDraft();view.planTab = 'active'; selectTargetForChild(pid); navigate('plans'); toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
     }
     if (action === 'edit-health' && modal?.type === 'health-confirm') { modal.type = 'health-form'; renderModal(); return; }
     if (action === 'save-health' && modal?.type === 'health-confirm' && canAccess(modal.targetId)) {
       const d = modal.draft; const pid = modal.targetId; const type = modal.healthType;
-      if (commit(next => next.healthRecords.push({ id: id('health'), profileId: pid, type, values: Object.fromEntries(Object.entries(d.values).map(([k, v]) => [k, Number(v)])), extras: d.extras.map(e => ({ ...e, value: Number(e.value) })), measuredAt: d.measuredAt.replace('T', ' '), note: d.note, source: d.assisted ? '手动输入 · 家属协助' : '手动输入', assisted: d.assisted, createdBy: view.accountId, createdAt: new Date().toISOString() }))) { view.healthType = type; selectTargetForChild(pid); navigate('health'); toast('测量记录已保存。'); } return;
+      if (commit(next => next.healthRecords.push({ id: id('health'), profileId: pid, type, values: Object.fromEntries(Object.entries(d.values).map(([k, v]) => [k, Number(v)])), extras: d.extras.map(e => ({ ...e, value: Number(e.value) })), measuredAt: d.measuredAt.replace('T', ' '), note: d.note, source: d.assisted ? '手动输入 · 家属协助' : '手动输入', assisted: d.assisted, createdBy: view.accountId, createdAt: new Date().toISOString() }))) { clearSavedDraft();view.healthType = type; selectTargetForChild(pid); navigate('health'); toast('测量记录已保存。'); } return;
     }
     if (['add-extra', 'remove-extra'].includes(action) && modal?.type === 'health-form') {
       modal.draft = collectHealth(document.querySelector('[data-form="health"]'));
@@ -678,12 +849,13 @@
     }
     if (action === 'choose-correction' && modal?.type === 'correct-dose' && account().role === 'elder') return openModal('dose-confirm', { eventId: modal.eventId, status: target.dataset.status, correction: true });
     if (action === 'snooze') {
-      if (commit(next => { R.snooze(next, view.accountId, itemId, Number(target.dataset.minutes)); })) { closeModal(false); render(); toast('已设置稍后提醒，原任务与服药事实不变。'); }
+      const context=modal?.type==='focus'?clone(modal):null;
+      if (commit(next => { R.snooze(next, view.accountId, itemId, Number(target.dataset.minutes)); })) { advanceFocus(context,itemId); toast('已设置稍后提醒，原任务与服药事实不变。'); }
       return;
     }
     if (action === 'dose-confirm') {
       const e = data.doseEvents.find(e => e.id === itemId);
-      if (e && R.canDeclare(data, view.accountId, e) && !resolved(e) && target.dataset.status === 'skipped') openModal('dose-confirm', { eventId: itemId, status: 'skipped' });
+      if (e && R.canDeclare(data, view.accountId, e) && !resolved(e) && target.dataset.status === 'skipped') openModal('dose-confirm', { eventId: itemId, status: 'skipped',focusContext:modal?.type==='focus'?clone(modal):null });
       return;
     }
     if (action === 'confirm-dose' && modal?.type === 'dose-confirm') return recordDose(modal.eventId, modal.status, { correction: !!modal.correction });
@@ -695,7 +867,7 @@
       const e = data.doseEvents.find(e => e.id === itemId);
       const reason = R.reminderReason(data, view.accountId, e);
       if (reason) { toast(reason, 'warning'); return; }
-      commit(next => { next.doseEvents.find(x => x.id === e.id).n3LastAt = now(); next.notificationLogs.push({ id: id('notice'), profileId: e.profileId, eventId: e.id, sentAt: now(), createdBy: view.accountId, text: `模拟提醒${profile().name}核对${e.date} ${e.slot} ${planFor(e).name}的用药记录` }); }); render(); toast('已生成模拟提醒，未发送真实消息。'); return;
+      if(commit(next=>R.sendN3(next,view.accountId,e.id,id('request')))) {render();toast('已生成模拟提醒，未发送真实消息。');} return;
     }
     if (action === 'plan-detail') { const p = data.medicationPlans.find(p => p.id === itemId); if (p && canAccess(p.profileId)) openModal('plan-detail', { planId: itemId, targetId: p.profileId }); return; }
     if (action === 'edit-plan' && modal?.type === 'plan-detail' && canAccess(modal.targetId)) {
@@ -727,7 +899,8 @@
     }
     if (action === 'confirm-reset' && modal?.type === 'reset') {
       try { localStorage.removeItem(DATA_KEY); invalidStorage = false; storageWarning = ''; } catch { storageWarning = '无法清除浏览器存档，本次仅恢复临时演示数据。'; }
-      data = seed(); view = { accountId: 'elder-zhang', page: 'home', healthType: 'blood_pressure', planTab: 'active', historyDate: DAY }; undo = null; overdueOpen = false; navigate('home'); toast('已恢复初始演示数据。');
+      drafts.clear();sessionViews.clear();dismissedFocus.clear();shownBanners.clear();visitId=id('visit');
+      data = seed(); view = { accountId: 'elder-zhang', page: 'home', healthType: 'blood_pressure', planTab: 'active', historyDate: DAY }; undo = null; overdueOpen = false;commit(()=>{});navigate('home');publishState();toast('已恢复初始演示数据。');
     }
   });
 
@@ -736,6 +909,7 @@
   }
 
   document.addEventListener('keydown', event => {
+    document.documentElement.dataset.input='keyboard';
     if (!modal) return;
     if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
     if (event.key !== 'Tab') return;
@@ -744,10 +918,12 @@
     if (event.shiftKey && (document.activeElement === first || document.activeElement.classList.contains('modal-sheet'))) { event.preventDefault(); last?.focus(); }
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   });
+  document.addEventListener('pointerdown',()=>{document.documentElement.dataset.input='pointer';});
 
   window.addEventListener('storage', event => {
     if (event.key !== DATA_KEY) return;
-    // 打开的表单先关闭，避免另一窗口更新后误保存过时草稿。账号仍保持本窗口选择。
+    // 保存工作草稿；恢复后仍在最终确认时检查权限和计划版本。
+    preserveDraft();
     data = load();
     if (!data.accounts.some(a => a.id === view.accountId)) view.accountId = data.accounts[0].id;
     undo = null;
@@ -756,5 +932,10 @@
     toast('本地演示数据已更新。');
   });
 
+  document.body.classList.toggle('is-embedded',Bridge.embedded);
+  if(Bridge.embedded){app.style.visibility='hidden';app.inert=true;}
   render();
+  Bridge.start(handleDemoMessage,bridgeState());
+  commit(()=>{});
+  window.addEventListener('beforeunload',event=>{if(workModal(modal)||drafts.size){event.preventDefault();event.returnValue='';}});
 })();
