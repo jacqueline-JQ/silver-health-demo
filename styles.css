@@ -1818,3 +1818,23 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; min-hei
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* 三种本人声明、延后与历史沿用相同的任务控件。 */
+.icon { flex-shrink: 0; aspect-ratio: 1; }
+.dose-actions { display: grid; gap: 10px; margin-top: 16px; }
+.dose-actions button { min-height: 48px; }
+.snooze-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.snooze-actions button { padding: 10px 6px; font-size: .85em; background: #fff4e4; color: #795016; border-color: #f0dec0; }
+.font-elder .dose-actions button, .font-elder .snooze-actions button { min-height: 56px; }
+.reminder-control { display: grid; gap: 6px; }
+.reminder-control small { color: var(--muted); font-size: .72em; }
+.status-taken { color: #24613d; background: #e0f2e6; }
+.status-snoozed { color: #795016; background: #fff0d7; }
+.status-cancelled { color: #536478; background: #edf0f2; }
+.meal-tag { display: inline-block; border-radius: 6px; padding: 3px 7px; background: var(--primary-soft); color: var(--primary-dark); font-size: .7em; }
+.overdue-dot { width: 10px; height: 10px; flex: 0 0 10px; margin-top: .4em; border-radius: 50%; background: #c94754; }
+.history-caption { margin: 12px var(--page-padding); color: var(--muted); font-size: .82em; }
+.audit-trail { margin: 20px 0; font-size: .8em; color: var(--muted); }
+.audit-trail summary { cursor: pointer; min-height: 44px; }
+.sheet-content .med-card { margin: 0; }
+#app { width: 100%; }

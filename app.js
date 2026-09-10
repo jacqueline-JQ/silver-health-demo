@@ -5,8 +5,8 @@
   const DATA_KEY = 'silver-health-data-v1';
   const VIEW_KEY = 'silver-health-view-v1';
   const DAY = '2026-09-13';
-  const SLOTS = { 早餐后: '08:00', 午餐后: '12:30', 晚餐后: '18:30', 睡前: '21:00' };
-  const STATUS = { pending: '待打卡', overdue: '未按时记录', taken_on_time: '已服用', taken_late: '延时服用', skipped: '已跳过', not_taken: '未服用' };
+  const R = window.MedRules;
+  const { SLOTS, STATUS } = R;
   const TYPES = {
     blood_pressure: { name: '血压', fields: [['systolic', '收缩压', 'mmHg'], ['diastolic', '舒张压', 'mmHg'], ['pulse', '脉搏', '次/分']] },
     blood_lipid: { name: '血脂', fields: [['tc', '总胆固醇 TC', 'mmol/L'], ['tg', '甘油三酯 TG', 'mmol/L'], ['hdl', '高密度脂蛋白 HDL-C', 'mmol/L'], ['ldl', '低密度脂蛋白 LDL-C', 'mmol/L']] },
@@ -18,47 +18,36 @@
   const id = prefix => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
   const icon = name => `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
   const minutes = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-  const resolved = event => !['pending', 'overdue'].includes(event.status);
+  const resolved = event => R.resolved(event);
   let storageWarning = '';
   let invalidStorage = false;
 
   function seed() {
-    const result = clone(window.SILVER_SEED_DATA);
-    result.version = 1;
-    result.demoTime = '21:15';
-    result.families = [result.family];
-    result.accounts.forEach(account => {
-      account.familyId = result.family.id;
-      if (account.role === 'child') account.boundProfileIds = result.elderProfiles.map(profile => profile.id);
-    });
-    result.elderProfiles.forEach(profile => { profile.familyId = result.family.id; });
-    result.doseEvents.forEach(event => { if (event.status === 'overdue') event.status = 'pending'; });
-    return result;
+    return R.prepareSeed(window.SILVER_SEED_DATA);
   }
 
   function validData(value) {
-    if (!value || value.version !== 1 || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.demoTime)) return false;
-    if (!['accounts', 'families', 'elderProfiles', 'medicationPlans', 'doseEvents', 'healthRecords', 'notificationLogs'].every(key => Array.isArray(value[key]))) return false;
-    if (!value.accounts.length || !value.accounts.every(a => a.id && ['elder', 'child'].includes(a.role) && ['elder', 'normal'].includes(a.fontMode))) return false;
-    if (!value.medicationPlans.every(p => p.id && p.name && p.profileId && Array.isArray(p.slots) && p.slots.every(slot => SLOTS[slot]))) return false;
-    if (!value.doseEvents.every(e => e.id && e.date && SLOTS[e.slot] && STATUS[e.status] && value.medicationPlans.some(p => p.id === e.planId && p.profileId === e.profileId))) return false;
-    if (!value.healthRecords.every(r => TYPES[r.type] && r.values && typeof r.measuredAt === 'string' && Object.values(r.values).every(n => typeof n === 'number' && Number.isFinite(n)))) return false;
-    return value.accounts.every(a => value.families.some(f => f.id === a.familyId) && (a.role === 'elder'
-      ? value.elderProfiles.some(p => p.id === a.profileId && p.familyId === a.familyId)
-      : Array.isArray(a.boundProfileIds) && a.boundProfileIds.every(pid => value.elderProfiles.some(p => p.id === pid && p.familyId === a.familyId))));
+    return R.validData(value);
   }
 
   function load() {
+    let saved;
     try {
-      const saved = localStorage.getItem(DATA_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      saved = localStorage.getItem(DATA_KEY);
+    } catch {
+      storageWarning = '浏览器不允许本地保存，本次操作仅在当前页面有效。';
+      return seed();
+    }
+    if (saved) {
+      try {
+        const parsed = R.migrate(JSON.parse(saved));
         if (!validData(parsed)) throw new Error('invalid');
         return parsed;
+      } catch {
+        // 读取后的任何解析/迁移错误都视作损坏存档，绝不能在下次操作时覆盖原文。
+        invalidStorage = true;
+        storageWarning = '原有存档无法读取，已保留原存档。本次使用临时演示数据。';
       }
-    } catch (error) {
-      invalidStorage = error.message === 'invalid' || error instanceof SyntaxError;
-      storageWarning = invalidStorage ? '原有存档无法读取，已保留原存档。本次使用临时演示数据。' : '浏览器不允许本地保存，本次操作仅在当前页面有效。';
     }
     return seed();
   }
@@ -84,21 +73,16 @@
   const canAccess = pid => permitted().includes(pid);
   const profiles = () => data.elderProfiles.filter(p => canAccess(p.id));
   const profile = () => profiles().find(p => p.id === account().selectedProfileId) || profiles()[0];
-  const planFor = event => data.medicationPlans.find(p => p.id === event.planId);
-  const stateOf = event => resolved(event) ? event.status : (minutes(data.demoTime) - minutes(event.scheduledTime) > 60 ? 'overdue' : 'pending');
+  const planFor = event => event.snapshot || data.medicationPlans.find(p => p.id === event.planId);
+  const stateOf = event => R.stateOf(event, data);
+  const today = () => R.day(data);
+  const now = () => R.now(data);
+  const displayTime = value => value ? String(value).replace('T', ' ').replace(/(?:\:00)?\+08:00$/, '') : '时间依据不足';
   const author = record => data.accounts.find(a => a.id === (record.createdBy || record.recordedBy))?.name || record.recordedByName || '演示数据';
-  const activeOnDay = plan => plan.status === 'active' && plan.startDate <= DAY && (!plan.endDate || plan.endDate >= DAY);
-  const eventsToday = (pid = profile()?.id) => data.doseEvents.filter(e => e.profileId === pid && e.date === DAY && (activeOnDay(planFor(e)) || resolved(e))).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+  const eventsOn = (date, pid = profile()?.id) => data.doseEvents.filter(e => e.profileId === pid && e.date === date && !e.cancelledAt).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime) || a.id.localeCompare(b.id));
+  const eventsToday = (pid = profile()?.id) => eventsOn(today(), pid);
   const recordsFor = (type = view.healthType) => data.healthRecords.filter(r => r.profileId === profile()?.id && r.type === type).sort((a, b) => b.measuredAt.localeCompare(a.measuredAt) || (b.createdAt || '').localeCompare(a.createdAt || ''));
 
-  function generateEvents(next, plan) {
-    if (!activeOnDay(plan)) return;
-    plan.slots.forEach(slot => {
-      if (next.doseEvents.some(e => e.planId === plan.id && e.slot === slot && e.date === DAY)) return;
-      next.doseEvents.push({ id: id('event'), profileId: plan.profileId, planId: plan.id, slot, scheduledTime: SLOTS[slot], date: DAY, status: 'pending', recordedAt: null, recordedBy: null });
-    });
-  }
-  data.medicationPlans.forEach(plan => { generateEvents(data, plan); });
 
   function rememberView() {
     try { sessionStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch { /* 当前页面仍可正常切换。 */ }
@@ -107,7 +91,7 @@
   // 业务修改集中保存；存储失败时明确提示，不把临时数据说成已经持久化。
   function commit(change) {
     const next = clone(data);
-    change(next);
+    try { change(next); } catch (error) { toast(error.message || '操作未保存，请检查输入。', 'warning'); return false; }
     if (!validData(next)) { toast('数据校验失败，未保存任何修改。', 'warning'); return false; }
     data = next;
     if (!invalidStorage) {
@@ -140,20 +124,33 @@
   }
 
   function reminderButton(event) {
-    const sent = data.notificationLogs.some(n => n.eventId === event.id && n.sentAt === `${DAY} ${data.demoTime}`);
-    return button(`${icon('bell')}${sent ? '已模拟提醒' : '模拟提醒'}`, 'remind', 'button-secondary button-small', `data-id="${event.id}" ${sent ? 'disabled' : ''}`);
+    const reason = R.reminderReason(data, view.accountId, event);
+    return `<div class="reminder-control">${button(`${icon('bell')}提醒 TA（模拟）`, 'remind', 'button-secondary button-small', `data-id="${event.id}" ${reason ? 'disabled aria-disabled="true"' : ''}`)}${reason ? `<small>${esc(reason)}</small>` : ''}</div>`;
   }
+
+  function doseActions(event) {
+    if (account().role === 'child') return reminderButton(event);
+    if (!R.canDeclare(data, view.accountId, event)) return '<p class="helper-text">尚未到此时段或任务已取消</p>';
+    if (resolved(event)) return button('更正记录', 'correct-dose', 'text-button', `data-id="${event.id}"`);
+    const reason = R.snoozeReason(data, view.accountId, event);
+    return `<div class="dose-actions">${button(`${icon('check')}已服用`, 'take', 'button-primary', `data-id="${event.id}"`)}${button('未服用', 'declare', 'button-secondary', `data-id="${event.id}" data-status="not_taken"`)}${button('本次无需服用', 'dose-confirm', 'button-secondary', `data-id="${event.id}" data-status="skipped"`)}</div><div class="snooze-actions">${[5, 30].map(n => button(`延后 ${n} 分钟`, 'snooze', 'button-secondary button-small', `data-id="${event.id}" data-minutes="${n}" ${reason ? 'disabled aria-disabled="true"' : ''}`)).join('')}</div><p class="helper-text">${esc(reason ? (event.snoozeUsed ? '* 延后机会已用完，请按实际情况记录' : reason) : '* 本次任务仅有 1 次延后机会')}</p>`;
+  }
+
+  function recordDetails(event) {
+    return `${event.recordedAt ? `<p class="helper-text">${event.recordedAt >= event.deadlineAt ? '补记 · ' : ''}${esc(displayTime(event.recordedAt))}记录 · ${esc(author(event))}</p>` : ''}${event.snoozeUntil && !resolved(event) ? `<p class="helper-text">再次提醒：${esc(displayTime(event.snoozeUntil))}</p>` : ''}${event.legacy ? '<p class="helper-text">旧版来源保留；餐时待本人核对，记录时间不代表服药时间。</p>' : ''}`;
+  }
+
+  const mealTag = event => planFor(event).meal ? `<span class="meal-tag">${esc(planFor(event).meal)}</span>` : '';
 
   function overdueCard(events) {
     const late = events.filter(e => stateOf(e) === 'overdue');
     if (!late.length) return '';
-    return `<section class="card overdue-card ${overdueOpen ? 'is-open' : ''}">${button(`<span class="alert-icon">${icon('warning')}</span><span>未按时打卡提醒（${late.length}）</span>${icon('down')}`, 'overdue', 'overdue-toggle', `aria-expanded="${overdueOpen}" aria-controls="overdue-items"`)}<div class="overdue-items" id="overdue-items"><p class="microcopy">未打卡不等于未服药。仅记录实际情况，请勿因提醒自行补服。</p>${late.map(e => `<article class="overdue-item"><div class="overdue-item-main"><div><strong>${esc(planFor(e).name)}</strong><span>${e.slot} · ${e.scheduledTime}</span></div>${badge(e)}</div>${account().role === 'child' ? reminderButton(e) : `<div class="overdue-actions">${button('已服用', 'dose-confirm', '', `data-id="${e.id}" data-status="taken_late"`)}${button('未服用', 'dose-confirm', '', `data-id="${e.id}" data-status="not_taken"`)}${button('跳过本次', 'dose-confirm', '', `data-id="${e.id}" data-status="skipped"`)}</div>`}</article>`).join('')}</div></section>`;
+    return `<section class="card overdue-card ${overdueOpen ? 'is-open' : ''}">${button(`<span class="overdue-dot" aria-hidden="true"></span><span>未按时打卡提醒（${late.length}）</span>${icon('down')}`, 'overdue', 'overdue-toggle', `aria-expanded="${overdueOpen}" aria-controls="overdue-items"`)}<div class="overdue-items" id="overdue-items"><p class="microcopy">未打卡不等于未服药。仅记录实际情况，请勿因提醒自行补服。</p>${late.map(e => `<article class="overdue-item"><div class="overdue-item-main"><div><strong>${esc(planFor(e).name)} ${mealTag(e)}</strong><span>${e.date} ${e.slot} · ${e.scheduledTime} · 计划 ${esc(planFor(e).doseValue)} ${esc(planFor(e).doseUnit)}</span></div>${badge(e)}</div>${doseActions(e)}</article>`).join('')}</div></section>`;
   }
 
   function medCard(event) {
     const plan = planFor(event);
-    const future = minutes(event.scheduledTime) > minutes(data.demoTime);
-    return `<article class="card med-card color-${esc(plan.color || 'blue')}"><div class="med-card-top"><div class="med-card-title-wrap"><h3>${esc(plan.name)}</h3><div class="med-meta"><span>${icon('pill')}${esc(plan.doseValue)} ${esc(plan.doseUnit)}/次</span><span>${icon('clock')}${event.scheduledTime}</span></div></div>${badge(event)}</div>${resolved(event) ? `<div class="med-completed">${icon('check')}<span>${STATUS[event.status]} · ${esc(event.recordedAt || '演示记录')}</span></div>` : future ? '<p class="helper-text">尚未到此时段</p>' : `<div class="med-card-actions">${button(`${icon('check')}已服用`, 'take', 'button-primary', `data-id="${event.id}"`)}${button(`${icon('skip')}跳过本次`, 'dose-confirm', 'button-secondary', `data-id="${event.id}" data-status="skipped"`)}</div>`}</article>`;
+    return `<article class="card med-card color-${esc(plan.color || 'blue')}" id="task-${event.id}" data-event="${event.id}"><div class="med-card-top"><div class="med-card-title-wrap"><h3>${esc(plan.name)} ${mealTag(event)}</h3><div class="med-meta"><span>${icon('pill')}计划 ${esc(plan.doseValue)} ${esc(plan.doseUnit)}/次</span><span>${icon('clock')}${event.slot} ${event.scheduledTime}</span></div></div>${badge(event)}</div>${recordDetails(event)}${doseActions(event)}${button('查看记录详情', 'task-detail', 'text-button', `data-id="${event.id}"`)}</article>`;
   }
 
   function homePage() {
@@ -166,20 +163,24 @@
     if (account().role === 'child') {
       return `<header class="hero">${topbar()}<div class="hero-copy"><p class="hero-greeting">${esc(account().name)}，晚上好</p><h1 class="hero-name">家人的今日记录</h1></div>${profileSelector()}</header><div class="family-summary-grid"><div class="metric-card complete"><strong>${complete}/${events.length}</strong><span>已记录 · 服用 ${taken}</span></div><div class="metric-card pending"><strong>${pending}</strong><span>待打卡</span></div><div class="metric-card overdue"><strong>${late}</strong><span>未按时记录</span></div></div>${overdueCard(events)}${section('全天用药日程', schedule(events))}${safety()}`;
     }
-    const currentSlot = Object.keys(SLOTS).filter(slot => minutes(SLOTS[slot]) <= minutes(data.demoTime)).at(-1) || '早餐后';
+    const currentSlot = Object.keys(SLOTS).find(slot => { const start = { 早餐: 300, 午餐: 660, 晚餐: 960, 睡前: 1200 }[slot]; const end = { 早餐: 660, 午餐: 960, 晚餐: 1200, 睡前: 1440 }[slot]; return minutes(data.demoTime) >= start && minutes(data.demoTime) < end; }) || '凌晨（无固定时段）';
     const current = events.filter(e => e.slot === currentSlot && stateOf(e) !== 'overdue');
     const next = events.find(e => !resolved(e) && minutes(e.scheduledTime) > minutes(data.demoTime));
-    return `<header class="hero">${topbar()}<div class="hero-copy"><p class="hero-greeting">9 月 13 日 · 星期日</p><h1 class="hero-name">${esc(p?.name || account().name)}，晚上好</h1><p class="hero-subtitle">今天，也照顾好自己</p></div></header><section class="card summary-card overlap-card"><div><h2>今天已记录 ${complete}/${events.length}</h2><p>已服用 ${taken} 次 · 已跳过 ${events.filter(e => e.status === 'skipped').length} 次</p></div><div class="progress-ring" style="--progress:${events.length ? complete / events.length * 100 : 0}%" role="img" aria-label="今天已记录 ${complete} 次，共 ${events.length} 次"><span>${complete}/${events.length}</span></div></section>${overdueCard(events)}${section(`现在 · ${currentSlot}`, current.length ? `<div class="card-list">${current.map(medCard).join('')}</div>` : empty(`本时段没有待打卡药物${next ? `，下一次是${next.slot} ${next.scheduledTime}` : ''}`))}${section('今日其他记录', schedule(events.filter(e => e.slot !== currentSlot && stateOf(e) !== 'overdue'), false))}${safety()}`;
+    return `<header class="hero">${topbar()}<div class="hero-copy"><p class="hero-greeting">${today()} · 北京时间</p><h1 class="hero-name">${esc(p?.name || account().name)}，您好</h1><p class="hero-subtitle">今天，也照顾好自己</p></div></header><section class="card summary-card overlap-card"><div><h2>今天已记录 ${complete}/${events.length}</h2><p>已服用 ${taken} 次 · 本次无需服用 ${events.filter(e => e.status === 'skipped').length} 次</p><p>${R.dailyResult(data, p?.id, today()).star ? '★ 当天记录符合星星条件' : '有任务且全部已服用／本次无需服用时点星'}</p></div><div class="progress-ring" style="--progress:${events.length ? complete / events.length * 100 : 0}%" role="img" aria-label="今天已记录 ${complete} 次，共 ${events.length} 次"><span>${complete}/${events.length}</span></div></section>${overdueCard(data.doseEvents.filter(e => e.profileId === p?.id && !e.cancelledAt))}${section(`现在 · ${currentSlot}`, current.length ? `<div class="card-list">${current.map(medCard).join('')}</div>` : empty(`本时段没有待打卡药物${next ? `，下一次是${next.slot} ${next.scheduledTime}` : ''}`))}${section('今日其他记录', schedule(events.filter(e => e.slot !== currentSlot && stateOf(e) !== 'overdue'), false))}${safety()}`;
   }
 
   function schedule(events, remind = true) {
     if (!events.length) return empty('暂无用药记录');
-    return `<div class="schedule-list">${Object.entries(SLOTS).filter(([slot]) => events.some(e => e.slot === slot)).map(([slot, time]) => `<section class="schedule-group"><div class="schedule-group-title">${icon('clock')}${slot} · ${time}</div>${events.filter(e => e.slot === slot).map(e => `<div class="schedule-row"><div class="schedule-name"><strong>${esc(planFor(e).name)}</strong><span>${esc(planFor(e).doseValue)} ${esc(planFor(e).doseUnit)}/次${resolved(e) ? ` · ${esc(e.recordedAt || '')}` : ''}</span></div><div class="schedule-status">${badge(e)}${remind && account().role === 'child' && !resolved(e) && stateOf(e) !== 'overdue' ? reminderButton(e) : ''}</div></div>`).join('')}</section>`).join('')}</div>`;
+    return `<div class="schedule-list">${Object.entries(SLOTS).filter(([slot]) => events.some(e => e.slot === slot)).map(([slot]) => `<section class="schedule-group"><div class="schedule-group-title">${icon('clock')}${slot}</div>${events.filter(e => e.slot === slot).map(e => `<div class="schedule-row"><div class="schedule-name"><strong>${esc(planFor(e).name)} ${mealTag(e)}</strong><span>计划 ${esc(planFor(e).doseValue)} ${esc(planFor(e).doseUnit)}/次 · 提醒 ${e.scheduledTime}</span>${recordDetails(e)}</div><div class="schedule-status">${badge(e)}${button('查看当次', 'task-detail', 'text-button', `data-id="${e.id}"`)}${remind && account().role === 'child' ? reminderButton(e) : ''}</div></div>`).join('')}</section>`).join('')}</div>`;
   }
 
   function plansPage() {
     const plans = data.medicationPlans.filter(p => p.profileId === profile()?.id && p.status === view.planTab);
-    const history = data.doseEvents.filter(e => e.profileId === profile()?.id && e.date === view.historyDate && resolved(e)).sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || ''));
+    const history = eventsOn(view.historyDate);
+    if (view.planTab === 'history') {
+      const result = R.dailyResult(data, profile()?.id, view.historyDate);
+      return `${header('用药信息', `${esc(profile()?.name || '')} · 打卡记录`)}<div class="filter-tabs">${button('正在服用', 'plan-tab', 'filter-button', 'data-value="active"')}${button('已停用', 'plan-tab', 'filter-button', 'data-value="inactive"')}${button('打卡记录', 'plan-tab', 'filter-button is-active', 'data-value="history"')}</div><div class="history-date form-row"><label for="history-date">任务日期</label><input id="history-date" type="date" value="${esc(view.historyDate)}" max="${today()}"></div>${section(`${result.star ? '★ ' : ''}${view.historyDate} · 已记录 ${result.recorded}/${result.total}`, `<p class="history-caption">${view.historyDate < today() ? '历史星星依据当日结束前的记录；后续补记、更正单独留痕。' : '按本人声明记录；未记录不代表未服用。'}</p>${history.length ? `<div class="card-list">${history.map(medCard).join('')}</div>` : empty('这一天没有用药任务')}`)}${safety()}`;
+    }
     return `${header('用药信息', `${esc(profile()?.name || '')}的药物计划与打卡记录`)}<div class="filter-tabs" role="tablist" aria-label="用药信息分类">${[['active', '正在服用'], ['inactive', '已停用'], ['history', '打卡记录']].map(([key, label]) => button(label, 'plan-tab', `filter-button ${view.planTab === key ? 'is-active' : ''}`, `role="tab" aria-selected="${view.planTab === key}" data-value="${key}"`)).join('')}</div>${view.planTab === 'history' ? `<div class="history-date form-row"><label for="history-date">记录日期</label><input id="history-date" type="date" value="${esc(view.historyDate)}" max="${DAY}"></div>${section('已确认的记录', history.length ? `<div class="record-list">${history.map(e => `<article class="record-row"><div><strong>${esc(planFor(e).name)}</strong><span>${e.slot} ${e.scheduledTime} · ${esc(author(e))}</span></div><div class="record-right">${badge(e)}<span>${esc(e.recordedAt || '')}</span></div></article>`).join('')}</div>` : empty('这一天还没有已确认的打卡记录'))}` : section(view.planTab === 'inactive' ? '已停用的计划' : '药物计划', plans.length ? `<div class="card-list">${plans.map(p => `<article class="card plan-card"><span class="plan-pill-icon ${esc(p.color || 'blue')}">${icon('pill')}</span><div class="plan-info"><h3>${esc(p.name)}</h3><p>${esc(p.doseValue)} ${esc(p.doseUnit)}/次 · 每天 ${p.slots.length} 次</p><p>${p.slots.join('、')} · ${esc(p.source)}</p>${p.startDate > DAY ? `<p>将于 ${p.startDate} 开始</p>` : p.endDate && p.endDate < DAY ? `<p>已于 ${p.endDate} 到期</p>` : ''}</div>${button(icon('chevron'), 'plan-detail', 'plan-more', `data-id="${p.id}" aria-label="查看${esc(p.name)}" title="查看药物计划"`)}</article>`).join('')}</div>` : empty('暂无此类药物计划'))}${safety()}`;
   }
 
@@ -211,13 +212,13 @@
 
   function mePage() {
     const a = account();
-    return `${header('我的')}<section class="profile-card"><span class="avatar">${esc(a.avatar)}</span><div class="profile-info"><h2>${esc(a.name)}</h2><p>${a.age} 岁 · ${a.role === 'elder' ? '长辈账号' : '子女账号'}</p></div><span class="pill pill-green">演示账号</span></section>${section('显示设置', `<div class="settings-list"><div class="setting-row"><span class="setting-leading">${icon('settings')}</span><div class="setting-content"><strong>字号模式</strong></div><div class="font-segmented" role="group" aria-label="字号模式">${[['normal', '标准'], ['elder', '大字']].map(([key, label]) => button(label, 'font', a.fontMode === key ? 'is-active' : '', `data-value="${key}" aria-pressed="${a.fontMode === key}"`)).join('')}</div></div></div>`)}${section('家庭与账号', `<div class="settings-list">${button(`<span class="setting-leading">${icon('users')}</span><span class="setting-content"><strong>${esc(family().name)}</strong><span>${profiles().map(p => esc(p.name)).join('、')}</span></span>${icon('chevron')}`, 'family', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('user')}</span><span class="setting-content"><strong>首次使用引导</strong><span>新建本地演示账号</span></span>${icon('chevron')}`, 'onboarding', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('bell')}</span><span class="setting-content"><strong>模拟提醒记录</strong></span>${icon('chevron')}`, 'notifications', 'setting-row setting-button')}</div>`)}${section('切换演示账号', accountOptions())}${section('演示设置', `<div class="settings-list">${button(`<span class="setting-leading">${icon('clock')}</span><span class="setting-content"><strong>演示时间</strong><span>${DAY} ${data.demoTime}</span></span>${icon('chevron')}`, 'clock', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('info')}</span><span class="setting-content"><strong>演示与隐私说明</strong></span>${icon('chevron')}`, 'about', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('back')}</span><span class="setting-content"><strong>恢复初始演示数据</strong></span>${icon('chevron')}`, 'reset', 'setting-row setting-button')}</div>`)}${safety()}`;
+    return `${header('我的')}<section class="profile-card"><span class="avatar">${esc(a.avatar)}</span><div class="profile-info"><h2>${esc(a.name)}</h2><p>${a.age} 岁 · ${a.role === 'elder' ? '长辈账号' : '子女账号'}</p></div><span class="pill pill-green">演示账号</span></section>${section('显示设置', `<div class="settings-list"><div class="setting-row"><span class="setting-leading">${icon('settings')}</span><div class="setting-content"><strong>字号模式</strong></div><div class="font-segmented" role="group" aria-label="字号模式">${[['normal', '标准'], ['elder', '大字']].map(([key, label]) => button(label, 'font', a.fontMode === key ? 'is-active' : '', `data-value="${key}" aria-pressed="${a.fontMode === key}"`)).join('')}</div></div></div>`)}${section('家庭与账号', `<div class="settings-list">${button(`<span class="setting-leading">${icon('users')}</span><span class="setting-content"><strong>${esc(family().name)}</strong><span>${profiles().map(p => esc(p.name)).join('、')}</span></span>${icon('chevron')}`, 'family', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('user')}</span><span class="setting-content"><strong>首次使用引导</strong><span>新建本地演示账号</span></span>${icon('chevron')}`, 'onboarding', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('bell')}</span><span class="setting-content"><strong>模拟提醒记录</strong></span>${icon('chevron')}`, 'notifications', 'setting-row setting-button')}</div>`)}${section('切换演示账号', accountOptions())}${section('演示设置', `<div class="settings-list">${button(`<span class="setting-leading">${icon('clock')}</span><span class="setting-content"><strong>演示时间</strong><span>${today()} ${data.demoTime}</span></span>${icon('chevron')}`, 'clock', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('info')}</span><span class="setting-content"><strong>演示与隐私说明</strong></span>${icon('chevron')}`, 'about', 'setting-row setting-button')}${button(`<span class="setting-leading">${icon('back')}</span><span class="setting-content"><strong>恢复初始演示数据</strong></span>${icon('chevron')}`, 'reset', 'setting-row setting-button')}</div>`)}${safety()}`;
   }
 
   function render() {
     const scroll = document.querySelector('.app-main')?.scrollTop || 0;
     const pages = { home: homePage, plans: plansPage, health: healthPage, me: mePage };
-    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>本地演示 · ${DAY} ${data.demoTime}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${view.page !== 'me' ? button(icon('plus'), 'quick-add', 'fab', 'aria-label="快速添加" title="快速添加"') : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
+    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>本地演示 · ${today()} ${data.demoTime}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${view.page !== 'me' ? button(icon('plus'), 'quick-add', 'fab', 'aria-label="快速添加" title="快速添加"') : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
     document.querySelector('.app-main').scrollTop = scroll;
     renderModal();
     rememberView();
@@ -313,16 +314,23 @@
     if (m.type === 'health-form') return ['记录身体数据', healthForm()];
     if (m.type === 'health-confirm') return ['确认测量记录', healthReview()];
     if (m.type === 'onboarding') return ['首次使用引导', onboardingForm()];
-    if (m.type === 'clock') return ['演示时间', `<form data-form="clock">${input('time', '2026 年 9 月 13 日', data.demoTime, 'time', 'required')}<p class="helper-text">固定演示日；超过预设时间 60 分钟仍未记录的任务显示提醒。</p>${errorBox()}<div class="form-footer">${submit('确认时间')}</div></form>`];
+    if (m.type === 'clock') return ['演示时间', `<form data-form="clock">${input('dateOffset', '相对 2026-09-13 的天数（0–31）', data.dateOffset, 'number', 'required min="0" max="31" step="1"')}${input('time', '北京时间', data.demoTime, 'time', 'required')}<p class="helper-text">固定基准日，受控跨日。未记录任务到自然时段结束且无延后保护才显示未按时打卡。改变时间不会删除原有记录。</p>${errorBox()}<div class="form-footer">${submit('确认时间')}</div></form>`];
+    if (m.type === 'task-detail' || m.type === 'correct-dose') {
+      const e = data.doseEvents.find(e => e.id === m.eventId);
+      if (!e || !canAccess(e.profileId)) return ['无法查看', '<p>任务不存在或无权访问。</p>'];
+      const p = planFor(e);
+      const trail = e.changes || [];
+      return [m.type === 'correct-dose' ? '更正记录' : '当次任务详情', `<p><strong>${esc(p.name)}</strong> · 计划 ${esc(p.doseValue)} ${esc(p.doseUnit)}</p><p>${e.date} ${e.slot} · 提醒 ${e.scheduledTime} ${mealTag(e)}</p>${badge(e)}${recordDetails(e)}${m.type === 'correct-dose' && account().role === 'elder' ? `<p>选择正确声明后确认更正，保留原记录。</p><div class="dose-actions">${['taken', 'not_taken', 'skipped'].map(status => button(STATUS[status], 'choose-correction', 'button-secondary', `data-id="${e.id}" data-status="${status}"`)).join('')}</div>` : doseActions(e)}${trail.length ? `<details class="audit-trail"><summary>记录变更痕迹（${trail.length}）</summary>${trail.map(c => `<p>${esc(displayTime(c.recordedAt || c.at || c.submittedAt))} · ${esc(c.kind || c.type || '声明')} · ${esc(STATUS[c.before?.status || c.before] || '未记录')} → ${esc(STATUS[c.status || c.after?.status || c.after] || '未记录')} · ${esc(data.accounts.find(a => a.id === (c.recordedBy || c.actorId || c.accountId))?.name || '演示记录')}</p>`).join('')}</details>` : ''}${e.actual ? `<p>本人自述：${esc(typeof e.actual === 'string' ? e.actual : JSON.stringify(e.actual))}</p>` : ''}`];
+    }
     if (m.type === 'dose-confirm') {
       const event = data.doseEvents.find(e => e.id === m.eventId);
-      return ['确认本次记录', `<p><strong>${esc(planFor(event).name)}</strong> · ${event.slot} ${event.scheduledTime}</p><p>将记录为：<strong>${STATUS[m.status]}</strong></p><div class="confirm-banner">${icon('info')}仅记录实际情况，不代表停药或补服建议。</div><div class="form-footer">${button('取消', 'close-modal', 'button-secondary')}${button('确认记录', 'confirm-dose')}</div>`];
+      return [m.correction ? '确认更正' : '确认本次记录', `<p><strong>${esc(planFor(event).name)}</strong> · ${event.date} ${event.slot} ${event.scheduledTime}</p><p>将记录为：<strong>${STATUS[m.status]}</strong></p><div class="confirm-banner">${icon('info')}仅记录您本次的实际安排，不代表系统建议停药。</div><div class="form-footer">${button('取消', 'close-modal', 'button-secondary')}${button(m.correction ? '确认更正' : '确认记录', 'confirm-dose')}</div>`];
     }
     if (m.type === 'plan-detail') {
       const p = data.medicationPlans.find(p => p.id === m.planId);
-      return [esc(p.name), `<dl class="review-list"><dt>所属长辈</dt><dd>${esc(targetName())}</dd><dt>单次用量</dt><dd>${esc(p.doseValue)} ${esc(p.doseUnit)}</dd><dt>服用时段</dt><dd>${p.slots.join('、')}</dd><dt>开始日期</dt><dd>${p.startDate}</dd><dt>服用周期</dt><dd>${p.endDate ? `截至 ${p.endDate}` : '长期服用'}</dd><dt>来源</dt><dd>${esc(p.source)} · ${esc(author(p))}</dd><dt>备注</dt><dd>${esc(p.note || '无')}</dd><dt>状态</dt><dd>${p.status === 'active' ? '启用中' : '已停用'}</dd></dl>${p.status === 'active' ? `<div class="form-footer">${button('停用此计划', 'stop-plan', 'button-danger')}</div>` : ''}`];
+      return [esc(p.name), `<dl class="review-list"><dt>所属长辈</dt><dd>${esc(targetName())}</dd><dt>计划单次量</dt><dd>${esc(p.doseValue)} ${esc(p.doseUnit)}</dd><dt>服用时段</dt><dd>${p.slots.map(slot => `${slot} ${p.slotSettings[slot].time} ${esc(p.slotSettings[slot].meal || '')}`).join('<br>')}</dd><dt>开始日期</dt><dd>${p.startDate}</dd><dt>服用周期</dt><dd>${p.endDate ? `截至 ${p.endDate}` : '长期服用'}</dd><dt>来源</dt><dd>${esc(p.source)} · ${esc(author(p))}</dd><dt>备注</dt><dd>${esc(p.note || '无')}</dd><dt>状态</dt><dd>${p.status === 'active' ? '启用中' : '已停用'}</dd></dl><p class="helper-text">编辑或停用仅影响未开始时段，已开始任务保留原快照。</p>${p.status === 'active' ? `<div class="form-footer">${button('编辑计划', 'edit-plan', 'button-secondary')}${button('停用此计划', 'stop-plan', 'button-danger')}</div>` : ''}`];
     }
-    if (m.type === 'stop-confirm') return ['停用用药计划？', `<p>${esc(data.medicationPlans.find(p => p.id === m.planId).name)}</p><p>停用后不再显示待打卡任务，既有打卡历史仍会保留。此操作不是医疗停药建议，请遵循实际处方。</p><div class="form-footer">${button('取消', 'close-modal', 'button-secondary')}${button('确认停用计划', 'confirm-stop', 'button-danger')}</div>`];
+    if (m.type === 'stop-confirm') return ['停用用药计划？', `<p>${esc(data.medicationPlans.find(p => p.id === m.planId).name)}</p><p>仅取消未开始时段及未来任务；已开始任务保留原药名、剂量和安排，仍可补记。此操作不是医疗停药建议。</p><div class="form-footer">${button('取消', 'close-modal', 'button-secondary')}${button('确认停用计划', 'confirm-stop', 'button-danger')}</div>`];
     if (m.type === 'import') return ['模拟设备导入', `<p>记录对象：<strong>${esc(targetName())}</strong></p><p>将新增 3 条${TYPES[m.healthType].name}演示记录，来源标为“模拟设备导入”。</p><div class="confirm-banner">${icon('info')}预设数据，不连接设备，不用于健康判断。同一档案的同类示例不会重复导入。</div><div class="form-footer">${button('确认模拟导入', 'confirm-import')}</div>`];
     if (m.type === 'family') return ['我的家庭组', `<h3>${esc(family().name)}</h3><p>本地演示邀请码：<strong>${esc(family().inviteCode)}</strong></p><div class="target-list">${profiles().map(p => `<div class="setting-row"><span class="avatar">${esc(p.avatar)}</span><span>${esc(p.name)} · ${esc(account().role === 'elder' ? '本人' : p.relation)}</span></div>`).join('')}</div><div class="confirm-banner">${icon('lock')}本机模拟授权。子女可协助录入，不能代打卡；未接入真实身份验证。</div>`];
     if (m.type === 'notifications') {
@@ -336,7 +344,7 @@
 
   // 表单保留草稿，只有预览页的确认操作会写入共享数据。
   function newMedicine(targetId) {
-    openModal('medicine', { targetId, mode: 'manual', draft: { name: '', doseValue: '', doseUnit: '片', customUnit: '', slots: [], startDate: DAY, duration: '长期服用', endDate: '', note: '' } });
+    openModal('medicine', { targetId, mode: 'manual', draft: { name: '', doseValue: '', doseUnit: '片', customUnit: '', slots: [], slotSettings: Object.fromEntries(Object.entries(SLOTS).map(([slot, time]) => [slot, { time, meal: '' }])), startDate: today(), duration: '长期服用', endDate: '', note: '' } });
   }
 
   function medicineForm() {
@@ -346,12 +354,13 @@
 
   function collectMedicine(form) {
     const fd = new FormData(form);
-    return { name: String(fd.get('name') || '').trim(), doseValue: fd.get('doseValue'), doseUnit: fd.get('doseUnit'), customUnit: String(fd.get('customUnit') || '').trim(), slots: fd.getAll('slots'), startDate: fd.get('startDate'), duration: fd.get('duration'), endDate: fd.get('endDate') || '', note: String(fd.get('note') || '').trim() };
+    return { ...modal.draft, name: String(fd.get('name') || '').trim(), doseValue: fd.get('doseValue'), doseUnit: fd.get('doseUnit'), customUnit: String(fd.get('customUnit') || '').trim(), slots: fd.getAll('slots'), startDate: fd.get('startDate'), duration: fd.get('duration'), endDate: fd.get('endDate') || '', note: String(fd.get('note') || '').trim() };
   }
 
   function medicineReview() {
     const d = modal.draft;
-    return `<dl class="review-list"><dt>记录对象</dt><dd>${esc(targetName())}</dd><dt>药品名称</dt><dd>${esc(d.name)}</dd><dt>单次用量</dt><dd>${esc(d.doseValue)} ${esc(d.doseUnit === '其他' ? d.customUnit : d.doseUnit)}</dd><dt>每天次数</dt><dd>${d.slots.length} 次</dd><dt>服用时段</dt><dd>${d.slots.join('、')}</dd><dt>开始日期</dt><dd>${d.startDate}</dd><dt>服用周期</dt><dd>${d.duration === '长期服用' ? d.duration : `截至 ${d.endDate}`}</dd><dt>备注</dt><dd>${esc(d.note || '无')}</dd></dl><div class="confirm-banner">${icon('shield')}请按实际处方逐项确认。${d.startDate > DAY ? '计划从未来日期开始，不生成演示日任务。' : '过去时段的未记录任务会显示在提醒中。'}</div><div class="form-footer">${button(`${icon('back')}返回修改`, 'edit-med', 'button-secondary')}${button('确认创建', 'save-med')}</div>`;
+    const applicable = d.slots.filter(slot => minutes(data.demoTime) < { 早餐: 660, 午餐: 960, 晚餐: 1200, 睡前: 1440 }[slot]);
+    return `<dl class="review-list"><dt>记录对象</dt><dd>${esc(targetName())}</dd><dt>药品名称</dt><dd>${esc(d.name)}</dd><dt>计划单次量</dt><dd>${esc(d.doseValue)} ${esc(d.doseUnit === '其他' ? d.customUnit : d.doseUnit)}</dd><dt>每天次数</dt><dd>${d.slots.length} 次</dd><dt>服用时段</dt><dd>${d.slots.map(slot => `${slot} · 提醒 ${d.slotSettings[slot].time} ${esc(d.slotSettings[slot].meal || '')}`).join('<br>')}</dd><dt>开始日期</dt><dd>${d.startDate}</dd><dt>服用周期</dt><dd>${d.duration === '长期服用' ? d.duration : `截至 ${d.endDate}`}</dd><dt>备注</dt><dd>${esc(d.note || '无')}</dd></dl><div class="confirm-banner">${icon('shield')}<span>请按已有安排核对。${modal.planId ? '编辑仅影响未开始时段，已开始任务保留原快照。' : d.startDate > today() ? '从所选未来日期生效，不生成今天任务。' : `今天适用：${applicable.join('、') || '无'}；不追造已结束时段。当前时段提醒点已过，保存后可提醒一次。`}</span></div><div class="form-footer">${button(`${icon('back')}返回修改`, 'edit-med', 'button-secondary')}${button(modal.planId ? '确认修改' : '确认创建', 'save-med')}</div>`;
   }
 
   function healthForm() {
@@ -388,21 +397,16 @@
     if (el) { el.textContent = message; el.scrollIntoView({ block: 'nearest' }); }
   }
 
-  function recordDose(eventId, status) {
-    const event = data.doseEvents.find(e => e.id === eventId);
-    if (account().role !== 'elder' || !event || event.profileId !== account().profileId || resolved(event) || !activeOnDay(planFor(event)) || event.date !== DAY) return;
-    if (minutes(event.scheduledTime) > minutes(data.demoTime)) { toast('尚未到此时段，未记录。', 'warning'); return; }
-    const before = clone(event);
-    const token = id('change');
-    if (!commit(next => {
-      Object.assign(next.doseEvents.find(e => e.id === eventId), { status, recordedAt: next.demoTime, recordedBy: view.accountId, recordedAtReal: new Date().toISOString(), changeToken: token });
-    })) return;
+  function recordDose(eventId, status, options = {}) {
+    let operation;
+    if (!commit(next => { operation = R.recordDose(next, view.accountId, eventId, status, options); })) return false;
     clearTimeout(undoTimer);
-    undo = { eventId, before, token, accountId: view.accountId, expires: Date.now() + 5000 };
+    undo = { ...operation, accountId: view.accountId, expires: Date.now() + 5000 };
     undoTimer = setTimeout(() => { undo = null; }, 5000);
     closeModal(false);
     render();
-    toast(status.startsWith('taken') ? '已记录。今天也认真照顾自己。' : `已记录为“${STATUS[status]}”。`, 'success', true);
+    toast(`已记录为“${STATUS[status]}”。`, 'success', true);
+    return true;
   }
 
   function simulatePhoto(file) {
@@ -459,7 +463,7 @@
     if (form.dataset.form === 'clock') {
       const time = fd.get('time');
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return formError('请输入有效时间。');
-      commit(next => { next.demoTime = time; });
+      if (!commit(next => { R.setClock(next, Number(fd.get('dateOffset')), time); })) return;
       closeModal(false); render(); return;
     }
     if (form.dataset.form === 'medicine') {
@@ -477,7 +481,7 @@
       if (!Object.keys(draft.values).length && !draft.extras.length) return formError('请至少填写一项测量值。');
       if ([...Object.values(draft.values), ...draft.extras.map(e => e.value)].some(v => v === '' || !Number.isFinite(Number(v)) || Number(v) < 0)) return formError('测量值必须是非负数字。');
       if (modal.healthType === 'blood_pressure' && !(Number(draft.values.systolic) > Number(draft.values.diastolic))) return formError('请核对：收缩压需要大于舒张压。');
-      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(draft.measuredAt) || draft.measuredAt > `${DAY}T${data.demoTime}`) return formError('测量时间不能晚于当前演示时间。');
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(draft.measuredAt) || draft.measuredAt > `${today()}T${data.demoTime}`) return formError('测量时间不能晚于当前演示时间。');
       if (draft.extras.some(e => !e.name || !e.unit)) return formError('请填写附加指标的名称和单位。');
       const names = [...TYPES[modal.healthType].fields.map(([, label]) => label), ...draft.extras.map(e => e.name)];
       if (new Set(names).size !== names.length) return formError('指标名称不能重复。');
@@ -515,7 +519,7 @@
     }
     if (modal.type === 'health-form' && field.name === 'healthType') {
       modal.healthType = Object.keys(TYPES).find(key => TYPES[key].name === field.value);
-      modal.draft = { values: {}, extras: [], measuredAt: `${DAY}T${data.demoTime}`, note: '' }; renderModal();
+      modal.draft = { values: {}, extras: [], measuredAt: `${today()}T${data.demoTime}`, note: '' }; renderModal();
     }
     if (modal.type === 'onboarding' && field.name === 'familyMode') { modal.draft.familyMode = field.value; renderModal(); }
   });
@@ -539,14 +543,14 @@
     if (action === 'quick-add') return account().role === 'child' ? openModal('target') : openModal('quick', { targetId: account().profileId });
     if (action === 'select-target' && canAccess(itemId)) return openModal('quick', { targetId: itemId });
     if (action === 'add-med' && canAccess(modal?.targetId)) return newMedicine(modal.targetId);
-    if (action === 'add-health' && canAccess(modal?.targetId)) return openModal('health-form', { targetId: modal.targetId, healthType: view.healthType, draft: { values: {}, extras: [], measuredAt: `${DAY}T${data.demoTime}`, note: '' } });
+    if (action === 'add-health' && canAccess(modal?.targetId)) return openModal('health-form', { targetId: modal.targetId, healthType: view.healthType, draft: { values: {}, extras: [], measuredAt: `${today()}T${data.demoTime}`, note: '' } });
     if (action === 'med-mode' && modal?.type === 'medicine') { modal.draft = collectMedicine(document.querySelector('[data-form="medicine"]')); clearTimeout(recognitionTimer); modal.recognizing = false; modal.mode = value; renderModal(); return; }
     if (action === 'sample-photo') return simulatePhoto();
     if (action === 'edit-med' && modal?.type === 'medicine-confirm') { modal.type = 'medicine'; renderModal(); return; }
     if (action === 'save-med' && modal?.type === 'medicine-confirm' && canAccess(modal.targetId)) {
       const d = modal.draft; const pid = modal.targetId;
-      const plan = { id: id('med'), profileId: pid, name: d.name, doseValue: Number(d.doseValue), doseUnit: d.doseUnit === '其他' ? d.customUnit : d.doseUnit, slots: d.slots, startDate: d.startDate, duration: d.duration, endDate: d.duration === '截至某日期' ? d.endDate : null, note: d.note, status: 'active', color: 'blue', source: modal.recognized ? '模拟拍照识别' : account().role === 'child' ? '家属协助录入' : '手动录入', createdBy: view.accountId, createdAt: new Date().toISOString() };
-      if (commit(next => { next.medicationPlans.push(plan); generateEvents(next, plan); })) { view.planTab = 'active'; selectTargetForChild(pid); navigate('plans'); toast('用药计划已创建。'); } return;
+      const editing = modal.planId;
+      if (commit(next => { R.savePlan(next, view.accountId, { ...d, doseUnit: d.doseUnit === '其他' ? d.customUnit : d.doseUnit, source: modal.recognized ? '历史模拟输入' : account().role === 'child' ? '家属协助录入' : '手动录入' }, pid, editing); })) { view.planTab = 'active'; selectTargetForChild(pid); navigate('plans'); toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
     }
     if (action === 'edit-health' && modal?.type === 'health-confirm') { modal.type = 'health-form'; renderModal(); return; }
     if (action === 'save-health' && modal?.type === 'health-confirm' && canAccess(modal.targetId)) {
@@ -559,27 +563,41 @@
       if (action === 'remove-extra') modal.draft.extras.splice(Number(target.dataset.index), 1);
       renderModal(); return;
     }
-    if (action === 'take') { const e = data.doseEvents.find(e => e.id === itemId); if (e) recordDose(itemId, stateOf(e) === 'overdue' ? 'taken_late' : 'taken_on_time'); return; }
-    if (action === 'dose-confirm') {
+    if (action === 'take') return recordDose(itemId, 'taken');
+    if (action === 'declare' && target.dataset.status === 'not_taken') return recordDose(itemId, 'not_taken');
+    if (['task-detail', 'correct-dose'].includes(action)) {
       const e = data.doseEvents.find(e => e.id === itemId);
-      if (account().role === 'elder' && e?.profileId === account().profileId && !resolved(e) && ['taken_late', 'skipped', 'not_taken'].includes(target.dataset.status)) openModal('dose-confirm', { eventId: itemId, status: target.dataset.status });
+      if (e && canAccess(e.profileId) && (action !== 'correct-dose' || account().role === 'elder')) openModal(action, { eventId: itemId });
       return;
     }
-    if (action === 'confirm-dose' && modal?.type === 'dose-confirm') return recordDose(modal.eventId, modal.status);
+    if (action === 'choose-correction' && modal?.type === 'correct-dose' && account().role === 'elder') return openModal('dose-confirm', { eventId: modal.eventId, status: target.dataset.status, correction: true });
+    if (action === 'snooze') {
+      if (commit(next => { R.snooze(next, view.accountId, itemId, Number(target.dataset.minutes)); })) { closeModal(false); render(); toast('已设置稍后提醒，原任务与服药事实不变。'); }
+      return;
+    }
+    if (action === 'dose-confirm') {
+      const e = data.doseEvents.find(e => e.id === itemId);
+      if (e && R.canDeclare(data, view.accountId, e) && !resolved(e) && target.dataset.status === 'skipped') openModal('dose-confirm', { eventId: itemId, status: 'skipped' });
+      return;
+    }
+    if (action === 'confirm-dose' && modal?.type === 'dose-confirm') return recordDose(modal.eventId, modal.status, { correction: !!modal.correction });
     if (action === 'undo' && undo && Date.now() <= undo.expires && undo.accountId === view.accountId) {
       const saved = undo;
-      if (data.doseEvents.find(e => e.id === saved.eventId)?.changeToken !== saved.token) return;
-      commit(next => { next.doseEvents[next.doseEvents.findIndex(e => e.id === saved.eventId)] = saved.before; }); undo = null; render(); toast('本次打卡已撤销。'); return;
+      if (commit(next => { R.undoDose(next, view.accountId, saved); })) { undo = null; render(); toast('本次打卡已撤销，延后次数和提醒冷却不变。'); } return;
     }
     if (action === 'remind' && account().role === 'child') {
       const e = data.doseEvents.find(e => e.id === itemId);
-      if (!e || !canAccess(e.profileId) || resolved(e) || !activeOnDay(planFor(e))) return;
-      if (data.notificationLogs.some(n => n.eventId === e.id && n.sentAt === `${DAY} ${data.demoTime}`)) return;
-      commit(next => next.notificationLogs.push({ id: id('notice'), profileId: e.profileId, eventId: e.id, sentAt: `${DAY} ${data.demoTime}`, createdBy: view.accountId, text: `模拟提醒${profile().name}核对${e.slot}的用药记录` })); render(); toast('已生成模拟提醒，未发送真实消息。'); return;
+      const reason = R.reminderReason(data, view.accountId, e);
+      if (reason) { toast(reason, 'warning'); return; }
+      commit(next => { next.doseEvents.find(x => x.id === e.id).n3LastAt = now(); next.notificationLogs.push({ id: id('notice'), profileId: e.profileId, eventId: e.id, sentAt: now(), createdBy: view.accountId, text: `模拟提醒${profile().name}核对${e.date} ${e.slot} ${planFor(e).name}的用药记录` }); }); render(); toast('已生成模拟提醒，未发送真实消息。'); return;
     }
     if (action === 'plan-detail') { const p = data.medicationPlans.find(p => p.id === itemId); if (p && canAccess(p.profileId)) openModal('plan-detail', { planId: itemId, targetId: p.profileId }); return; }
+    if (action === 'edit-plan' && modal?.type === 'plan-detail' && canAccess(modal.targetId)) {
+      const p = data.medicationPlans.find(p => p.id === modal.planId);
+      openModal('medicine', { targetId: p.profileId, planId: p.id, mode: 'manual', draft: { ...clone(p), endDate: p.endDate || '', customUnit: '' } }); return;
+    }
     if (action === 'stop-plan' && modal?.type === 'plan-detail') { modal.type = 'stop-confirm'; renderModal(); return; }
-    if (action === 'confirm-stop' && modal?.type === 'stop-confirm' && canAccess(modal.targetId)) { const planId = modal.planId; commit(next => { next.medicationPlans.find(p => p.id === planId).status = 'inactive'; }); closeModal(false); render(); toast('计划已停用，历史记录仍保留。'); return; }
+    if (action === 'confirm-stop' && modal?.type === 'stop-confirm' && canAccess(modal.targetId)) { const planId = modal.planId; if (commit(next => { R.stopPlan(next, view.accountId, planId); })) { closeModal(false); render(); toast('计划已停用，已开始任务和历史记录仍保留。'); } return; }
     if (action === 'import' && profile()) return openModal('import', { targetId: profile().id, healthType: view.healthType });
     if (action === 'confirm-import' && modal?.type === 'import' && canAccess(modal.targetId)) {
       const pid = modal.targetId; const type = modal.healthType;

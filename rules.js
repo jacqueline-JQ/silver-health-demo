@@ -1,0 +1,257 @@
+/* 药安心的纯业务规则：不读写浏览器存储，调用者须在 commit 中执行变更。 */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.MedRules = api;
+})(typeof globalThis === 'object' ? globalThis : this, function () {
+  'use strict';
+  const DAY = '2026-09-13';
+  const SLOTS = { 早餐: '08:00', 午餐: '12:30', 晚餐: '18:30', 睡前: '21:00' };
+  const RANGES = { 早餐: [300, 660], 午餐: [660, 960], 晚餐: [960, 1200], 睡前: [1200, 1440] };
+  const STATUS = { pending: '待打卡', overdue: '未按时打卡', snoozed: '延后中', taken: '已服用', not_taken: '未服用', skipped: '本次无需服用', cancelled: '已取消' };
+  const FACTS = ['taken', 'not_taken', 'skipped'];
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const id = prefix => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const minute = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+  const hhmm = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  const validTime = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  const addDays = (date, n) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+  const dateAt = offset => addDays(DAY, offset);
+  const stamp = (date, time) => `${date}T${time}:00+08:00`;
+  const day = data => dateAt(data.dateOffset);
+  const now = data => stamp(day(data), data.demoTime);
+  const validStamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\+08:00$/.test(value) && validDate(value.slice(0, 10)) && validTime(value.slice(11, 16));
+  const plusMinutes = (value, n) => new Date(Date.parse(value) + (n + 480) * 60000).toISOString().slice(0, 19) + '+08:00';
+  const resolved = event => !!event && FACTS.includes(event.status);
+  const own = (data, accountId, event) => data.accounts.some(a => a.id === accountId && a.role === 'elder' && a.profileId === event?.profileId);
+  const canAccess = (data, accountId, pid) => {
+    const a = data.accounts.find(a => a.id === accountId);
+    return !!a && data.elderProfiles.some(p => p.id === pid && p.familyId === a.familyId) && (a.role === 'elder' ? a.profileId === pid : a.boundProfileIds.includes(pid));
+  };
+  const canDeclare = (data, accountId, e) => own(data, accountId, e) && canAccess(data, accountId, e.profileId) && !e.cancelledAt && now(data) >= e.startAt && now(data) >= e.createdAt;
+  const protectedAt = (e, at) => !resolved(e) && !!e.snoozeUntil && !!e.snoozedAt && e.snoozedAt <= at && at < e.snoozeUntil;
+  function stateOf(e, data) {
+    if (e.cancelledAt) return 'cancelled';
+    if (resolved(e)) return e.status;
+    if (protectedAt(e, now(data))) return 'snoozed';
+    return now(data) >= e.deadlineAt ? 'overdue' : 'pending';
+  }
+  function snoozeReason(data, accountId, e) {
+    if (!e || !own(data, accountId, e) || !canAccess(data, accountId, e.profileId)) return '只有长辈本人可以延后';
+    if (e.cancelledAt) return '任务已取消';
+    if (resolved(e)) return '已有记录';
+    if (e.snoozeUsed) return '延后机会已用完，请按实际情况记录';
+    if (now(data) < e.reminderAt || now(data) < e.createdAt) return '尚未到提醒时间';
+    return '';
+  }
+  function reminderReason(data, accountId, e) {
+    const a = data.accounts.find(a => a.id === accountId);
+    if (!e || a?.role !== 'child' || !canAccess(data, accountId, e.profileId)) return '无权提醒此任务';
+    if (e.cancelledAt) return '任务已取消';
+    if (resolved(e)) return '已有记录';
+    if (protectedAt(e, now(data))) return '正在延后';
+    if (now(data) < e.reminderAt || now(data) < e.createdAt) return '尚未到提醒时间';
+    if (e.n3LastAt && Date.parse(now(data)) - Date.parse(e.n3LastAt) < 300000) return `提醒冷却中，还需 ${Math.ceil((300000 - (Date.parse(now(data)) - Date.parse(e.n3LastAt))) / 60000)} 分钟`;
+    return '';
+  }
+  function taskTimes(date, slot, time) {
+    return { startAt: stamp(date, hhmm(RANGES[slot][0])), deadlineAt: RANGES[slot][1] === 1440 ? stamp(addDays(date, 1), '00:00') : stamp(date, hhmm(RANGES[slot][1])), reminderAt: stamp(date, time) };
+  }
+  function makeEvent(p, date, slot, at) {
+    const setting = p.slotSettings[slot];
+    return { id: id('event'), planId: p.id, profileId: p.profileId, date, slot, scheduledTime: setting.time,
+      ...taskTimes(date, slot, setting.time), createdAt: at, started: at >= taskTimes(date, slot, setting.time).startAt, planVersion: p.version, cancelledAt: null,
+      snapshot: { name: p.name, doseValue: p.doseValue, doseUnit: p.doseUnit, meal: setting.meal, note: p.note || '', color: p.color || 'blue' },
+      status: 'pending', recordedAt: null, recordedBy: null, actual: null, changes: [], snoozeUsed: 0, snoozedAt: null, snoozeUntil: null, n3LastAt: null };
+  }
+  function generateEvents(data, p, date = day(data), at = now(data)) {
+    if (p.status !== 'active' || date < p.startDate || (p.endDate && date > p.endDate)) return;
+    p.slots.forEach(slot => {
+      const e = makeEvent(p, date, slot, at > p.effectiveAt ? at : p.effectiveAt);
+      if (e.deadlineAt <= e.createdAt || data.doseEvents.some(x => x.planId === p.id && x.date === date && x.slot === slot)) return;
+      data.doseEvents.push(e);
+    });
+  }
+  // 受控时钟前进时逐日生成实际生效的任务，不用当前计划反推更早的历史。
+  function setClock(data, offset, time) {
+    if (!Number.isInteger(offset) || offset < 0 || offset > 31 || !validTime(time)) throw Error('请选择 0–31 天内的有效演示时间');
+    const previous = day(data);
+    data.doseEvents.forEach(e => { if (now(data) >= e.startAt && now(data) >= e.createdAt) e.started = true; });
+    const target = dateAt(offset);
+    data.dateOffset = offset; data.demoTime = time;
+    for (let date = addDays(previous, 1); date <= target; date = addDays(date, 1)) {
+      data.medicationPlans.forEach(p => { generateEvents(data, p, date, stamp(date, '00:00')); });
+    }
+    data.medicationPlans.forEach(p => { generateEvents(data, p); });
+    data.doseEvents.forEach(e => { if (now(data) >= e.startAt && now(data) >= e.createdAt) e.started = true; });
+  }
+  function planErrors(d) {
+    const errors = {};
+    if (!d.name?.trim() || d.name.length > 80) errors.name = '请填写药品名称（80字以内）';
+    if (!(Number(d.doseValue) > 0) || !Number.isFinite(Number(d.doseValue))) errors.doseValue = '请输入大于 0 的单次用量';
+    if (!d.doseUnit?.trim() || d.doseUnit.length > 12) errors.doseUnit = '请填写用量单位（12字以内）';
+    if (!Array.isArray(d.slots) || !d.slots.length || new Set(d.slots).size !== d.slots.length || d.slots.some(s => !SLOTS[s])) errors.slots = '至少选择一个有效服用时段';
+    (d.slots || []).forEach(s => {
+      const t = d.slotSettings?.[s];
+      if (!RANGES[s] || !validTime(t?.time) || minute(t.time) < RANGES[s][0] || minute(t.time) >= RANGES[s][1]) errors[`time-${s}`] = `提醒需在${s}自然时段内`;
+      if (t && !['', '餐前', '餐后'].includes(t.meal)) errors[`meal-${s}`] = '餐时只能选择餐前、餐后或留空';
+    });
+    if (!validDate(d.startDate)) errors.startDate = '请选择有效开始日期';
+    if (!['长期服用', '截至某日期'].includes(d.duration)) errors.duration = '请选择服用周期';
+    if (d.duration === '截至某日期' && (!validDate(d.endDate) || d.endDate < d.startDate)) errors.endDate = '结束日期不能早于开始日期';
+    return errors;
+  }
+  function savePlan(data, accountId, draft, pid, planId) {
+    if (!canAccess(data, accountId, pid)) throw Error('无权为此长辈保存计划');
+    const errors = planErrors(draft);
+    if (Object.keys(errors).length) throw Error(Object.values(errors).join('；'));
+    const previous = planId ? data.medicationPlans.find(p => p.id === planId && p.profileId === pid && p.status === 'active') : null;
+    if (planId && !previous) throw Error('原计划已变化，请重新打开核对');
+    if (previous && draft.version && draft.version !== previous.version) throw Error('计划已更新，请重新核对');
+    if (previous && now(data) < previous.effectiveAt) throw Error('演示时间早于计划修改时间，请向前调整');
+    const p = { id: planId || id('med'), profileId: pid, name: draft.name.trim(), doseValue: Number(draft.doseValue), doseUnit: draft.doseUnit.trim(), slots: [...draft.slots], slotSettings: clone(draft.slotSettings), startDate: draft.startDate, duration: draft.duration, endDate: draft.duration === '截至某日期' ? draft.endDate : null, note: draft.note || '', source: draft.source || '手动录入', assisted: !!draft.assisted, createdBy: previous?.createdBy || accountId, createdAt: previous?.createdAt || now(data), effectiveAt: now(data), version: (previous?.version || 0) + 1, status: 'active', color: previous?.color || 'blue', revisions: previous ? [...(previous.revisions || []), clone({ ...previous, revisions: [] })] : [] };
+    if (previous) {
+      data.medicationPlans[data.medicationPlans.indexOf(previous)] = p;
+      data.doseEvents.filter(e => e.planId === p.id && e.startAt > now(data) && !e.started && !e.changes.length && !e.snoozeUsed).forEach(e => {
+        const applicable = p.slots.includes(e.slot) && e.date >= p.startDate && (!p.endDate || e.date <= p.endDate);
+        if (!applicable) { e.cancelledAt = now(data); e.cancelReason = '计划编辑取消未开始任务'; return; }
+        const replacement = makeEvent(p, e.date, e.slot, now(data));
+        Object.assign(e, replacement, { id: e.id });
+      });
+    } else data.medicationPlans.push(p);
+    // 未来日期先保存计划；当演示日期前进到该日时再生成任务。
+    generateEvents(data, p);
+    return p;
+  }
+  function stopPlan(data, accountId, planId) {
+    const p = data.medicationPlans.find(p => p.id === planId);
+    if (!p || !canAccess(data, accountId, p.profileId)) throw Error('无权停用此计划');
+    if (now(data) < p.effectiveAt) throw Error('演示时间早于计划生效时间');
+    p.status = 'inactive'; p.stoppedAt = now(data); p.stoppedBy = accountId;
+    data.doseEvents.filter(e => e.planId === planId && e.startAt > now(data) && !e.started && !e.changes.length && !e.snoozeUsed).forEach(e => { e.cancelledAt = now(data); e.cancelReason = '计划停用，取消未开始任务'; });
+  }
+  const declaration = e => ({ status: e.status, recordedAt: e.recordedAt, recordedBy: e.recordedBy, actual: clone(e.actual), changeToken: e.changeToken || null });
+  function recordDose(data, accountId, eventId, status, options = {}) {
+    const e = data.doseEvents.find(e => e.id === eventId);
+    if (!canDeclare(data, accountId, e)) throw Error('只有长辈本人可记录已开始且仍保留的任务');
+    if (!FACTS.includes(status)) throw Error('请选择明确的本人声明');
+    if (options.operationId && e.changes.some(c => c.id === options.operationId)) return { eventId, token: options.operationId, before: declaration(e), duplicate: true };
+    if (resolved(e) && !options.correction) throw Error('此任务已有记录，请从更正入口处理');
+    if (e.changes.at(-1)?.recordedAt > now(data)) throw Error('演示时钟早于已有记录，请先向前调整时间');
+    const before = declaration(e);
+    const token = options.operationId || id('change');
+    const at = now(data);
+    e.changes.push({ id: token, kind: options.correction ? '更正' : '声明', before, status, recordedAt: at, recordedBy: accountId, actual: options.actual || null, reliableTime: true, syncState: data.simulationMode === 'offline' ? 'pending' : 'local', receivedAt: data.simulationMode === 'offline' ? null : at, inputSource: options.inputSource || '手动' });
+    Object.assign(e, { status, recordedAt: at, recordedBy: accountId, actual: options.actual || null, changeToken: token, started: true });
+    return { eventId, before, token };
+  }
+  function undoDose(data, accountId, operation) {
+    const e = data.doseEvents.find(e => e.id === operation.eventId);
+    if (!canDeclare(data, accountId, e) || e.changeToken !== operation.token || operation.accountId !== accountId || Date.now() > operation.expires) throw Error('撤销已过期或记录已变化，请使用更正记录');
+    const before = declaration(e);
+    const token = id('undo');
+    e.changes.push({ id: token, kind: '撤销', before, status: operation.before.status, recordedAt: now(data), recordedBy: accountId, reliableTime: true, restores: clone(operation.before), syncState: 'local', receivedAt: now(data) });
+    Object.assign(e, clone(operation.before), { changeToken: token });
+  }
+  function snooze(data, accountId, eventId, duration) {
+    const e = data.doseEvents.find(e => e.id === eventId);
+    const reason = snoozeReason(data, accountId, e);
+    if (reason) throw Error(reason);
+    if (![5, 30].includes(duration)) throw Error('请选择延后 5 或 30 分钟');
+    e.snoozeUsed = 1; e.started = true; e.snoozedAt = now(data); e.snoozeUntil = plusMinutes(now(data), duration); e.snoozedBy = accountId;
+    e.snoozeSyncState = data.simulationMode === 'offline' ? 'pending' : 'local';
+  }
+  // 历史结算始终保留任务及截止前版本依据，后补记/更正不会覆盖旧结果。
+  function dailyResult(data, pid, date) {
+    const cutoff = stamp(addDays(date, 1), '00:00');
+    const historical = date < day(data);
+    const tasks = data.doseEvents.filter(e => e.profileId === pid && e.date === date && e.createdAt < cutoff && (!e.cancelledAt || (historical && e.cancelledAt >= cutoff)));
+    const basis = tasks.map(e => {
+      const changes = e.changes.filter(c => !historical || (c.reliableTime && c.recordedAt && c.recordedAt < cutoff));
+      const c = changes.at(-1);
+      return { eventId: e.id, planVersion: e.planVersion, snapshot: clone(e.snapshot), declarationVersion: c?.id || null, status: historical ? c?.status || 'pending' : e.status, recordedAt: c?.recordedAt || null, ruleVersion: 2 };
+    });
+    return { star: date <= day(data) && basis.length > 0 && basis.every(b => ['taken', 'skipped'].includes(b.status)), total: basis.length, recorded: basis.filter(b => FACTS.includes(b.status)).length, taken: basis.filter(b => b.status === 'taken').length, basis, cutoff, ruleVersion: 2 };
+  }
+  function migrate(raw) {
+    if (raw?.version === 2) {
+      const d = clone(raw);
+      d.doseEvents.forEach(e => { e.started ||= e.startAt <= now(d) || !!e.changes.length || !!e.snoozeUsed; });
+      return d;
+    }
+    if (!raw || (raw.version != null && raw.version !== 1)) throw Error('invalid');
+    const d = clone(raw);
+    if (!['accounts', 'elderProfiles', 'medicationPlans', 'doseEvents', 'healthRecords', 'notificationLogs'].every(k => Array.isArray(d[k]))) throw Error('invalid');
+    d.families ||= d.family ? [d.family] : [];
+    d.version = 2; d.demoTime ||= '21:15'; d.dateOffset = 0; d.notificationStyle = 'ios';
+    d.accounts.forEach(a => { a.familyId ||= d.family?.id; if (a.role === 'child') a.boundProfileIds ||= d.elderProfiles.map(p => p.id); });
+    d.elderProfiles.forEach(p => { p.familyId ||= d.family?.id; });
+    const slotName = slot => ({ 早餐后: '早餐', 午餐后: '午餐', 晚餐后: '晚餐' }[slot] || slot);
+    d.medicationPlans.forEach(p => {
+      if (!Array.isArray(p.slots) || p.slots.some(s => !SLOTS[slotName(s)])) throw Error('invalid');
+      p.legacy = { slots: [...p.slots], source: p.source }; p.slots = p.slots.map(slotName);
+      p.slotSettings = Object.fromEntries(Object.entries(SLOTS).map(([s, time]) => [s, { time, meal: '' }]));
+      p.version = 1; p.effectiveAt = stamp(p.startDate, '00:00'); p.createdAt = p.effectiveAt;
+      p.endDate ||= null; p.revisions = [];
+    });
+    d.doseEvents = d.doseEvents.map(old => {
+      const p = d.medicationPlans.find(p => p.id === old.planId && p.profileId === old.profileId);
+      const slot = slotName(old.slot);
+      if (!p || !SLOTS[slot] || !validDate(old.date) || !['pending', 'overdue', 'taken_on_time', 'taken_late', 'skipped', 'not_taken'].includes(old.status)) throw Error('invalid');
+      const e = makeEvent(p, old.date, slot, stamp(old.date, '00:00'));
+      const sourceTime = validTime(old.recordedAt) ? stamp(old.date, old.recordedAt) : validStamp(old.recordedAt) ? old.recordedAt : null;
+      e.id = old.id; e.status = old.status.startsWith('taken_') ? 'taken' : old.status === 'overdue' ? 'pending' : old.status;
+      e.recordedAt = sourceTime; e.recordedBy = old.recordedBy || null; e.recordedByName = old.recordedByName || null;
+      e.legacy = clone(old);
+      e.started = e.startAt <= now(d) || resolved(e);
+      if (resolved(e)) e.changes.push({ id: `legacy-${e.id}`, kind: '旧版声明', before: { status: 'pending' }, status: e.status, recordedAt: sourceTime, recordedBy: e.recordedBy, reliableTime: !!sourceTime, actual: null, syncState: 'local' });
+      if (p.status === 'inactive' && !resolved(e) && e.startAt > now(d)) { e.cancelledAt = now(d); e.cancelReason = '旧版停用计划的未开始任务'; }
+      return e;
+    });
+    // 明确弃用字段只清理当前模型，legacy中保留原记录来源供追溯。
+    for (const key of ['isPro', 'proEnabled', 'subscriptionStatus', 'piggyBank', 'rewardBalance', 'transactions', 'mascot', 'mascotUpdatedAt']) {
+      delete d[key]; d.accounts.forEach(a => { delete a[key]; }); d.elderProfiles.forEach(p => { delete p[key]; });
+    }
+    return d;
+  }
+  function prepareSeed(raw) {
+    const d = migrate(raw);
+    d.medicationPlans.forEach(p => { delete p.legacy; p.source = p.source?.includes('拍照') ? '演示预设' : p.source; });
+    d.doseEvents.forEach(e => { delete e.legacy; });
+    // 明确预设的历史样例：10日全完成、11日含未服用、12日无任务。
+    const p = d.medicationPlans[0];
+    if (p) [10, 11].forEach(n => {
+      const date = `2026-09-${n}`;
+      const e = makeEvent(p, date, '早餐', stamp(date, '00:00'));
+      e.id = `history-${n}`; e.status = n === 10 ? 'taken' : 'not_taken'; e.recordedAt = stamp(date, '08:10'); e.recordedBy = 'elder-zhang';
+      e.changes = [{ id: `seed-history-${n}`, kind: '演示预设', before: { status: 'pending' }, status: e.status, recordedAt: e.recordedAt, recordedBy: e.recordedBy, reliableTime: true, syncState: 'local' }];
+      d.doseEvents.push(e);
+    });
+    return d;
+  }
+  function validData(d) {
+    try {
+      if (!d || d.version !== 2 || !validTime(d.demoTime) || !Number.isInteger(d.dateOffset) || d.dateOffset < 0 || d.dateOffset > 31 || !['ios', 'harmonyos', 'android'].includes(d.notificationStyle)) return false;
+      const keys = ['accounts', 'families', 'elderProfiles', 'medicationPlans', 'doseEvents', 'healthRecords', 'notificationLogs'];
+      if (!keys.every(k => Array.isArray(d[k]) && d[k].every(x => x && typeof x.id === 'string') && new Set(d[k].map(x => x.id)).size === d[k].length) || !d.accounts.length) return false;
+      if (!d.accounts.every(a => ['elder', 'child'].includes(a.role) && ['normal', 'elder'].includes(a.fontMode) && d.families.some(f => f.id === a.familyId) && (a.role === 'elder' ? d.elderProfiles.some(p => p.id === a.profileId && p.familyId === a.familyId) : Array.isArray(a.boundProfileIds) && a.boundProfileIds.every(pid => d.elderProfiles.some(p => p.id === pid && p.familyId === a.familyId))))) return false;
+      if (!d.elderProfiles.every(p => d.families.some(f => f.id === p.familyId))) return false;
+      if (!d.medicationPlans.every(p => Object.keys(planErrors(p)).length === 0 && ['active', 'inactive'].includes(p.status) && d.elderProfiles.some(x => x.id === p.profileId) && Number.isInteger(p.version) && validStamp(p.effectiveAt))) return false;
+      const taskKeys = d.doseEvents.map(e => `${e.profileId}|${e.planId}|${e.date}|${e.slot}`);
+      if (new Set(taskKeys).size !== taskKeys.length) return false;
+      if (!d.doseEvents.every(e => {
+        if (!validDate(e.date) || !SLOTS[e.slot] || !['pending', ...FACTS].includes(e.status) || !d.medicationPlans.some(p => p.id === e.planId && p.profileId === e.profileId)) return false;
+        const t = taskTimes(e.date, e.slot, e.scheduledTime);
+        if (!validTime(e.scheduledTime) || minute(e.scheduledTime) < RANGES[e.slot][0] || minute(e.scheduledTime) >= RANGES[e.slot][1] || Object.keys(t).some(k => e[k] !== t[k]) || !validStamp(e.createdAt)) return false;
+        if (!e.snapshot?.name || !(e.snapshot.doseValue > 0) || !Number.isFinite(e.snapshot.doseValue) || !e.snapshot.doseUnit || !['', '餐前', '餐后'].includes(e.snapshot.meal)) return false;
+        if (![0, 1].includes(e.snoozeUsed) || [e.cancelledAt, e.recordedAt, e.snoozeUntil, e.snoozedAt, e.n3LastAt].some(x => x != null && !validStamp(x))) return false;
+        if (e.snoozeUsed && (!e.snoozeUntil || !e.snoozedAt || ![300000, 1800000].includes(Date.parse(e.snoozeUntil) - Date.parse(e.snoozedAt)))) return false;
+        return Array.isArray(e.changes) && new Set(e.changes.map(c => c.id)).size === e.changes.length && e.changes.every(c => c.id && ['pending', ...FACTS].includes(c.status) && (c.recordedAt == null || validStamp(c.recordedAt)));
+      })) return false;
+      if (!d.healthRecords.every(r => d.elderProfiles.some(p => p.id === r.profileId) && ['blood_pressure', 'blood_lipid', 'body'].includes(r.type) && r.values && Object.values(r.values).every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0) && typeof r.measuredAt === 'string' && validDate(r.measuredAt.slice(0, 10)) && validTime(r.measuredAt.slice(11, 16)))) return false;
+      return d.notificationLogs.every(n => d.doseEvents.some(e => e.id === n.eventId && e.profileId === n.profileId) && typeof n.text === 'string');
+    } catch { return false; }
+  }
+  return { DAY, SLOTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult };
+});

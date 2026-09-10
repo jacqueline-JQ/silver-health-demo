@@ -1,0 +1,6 @@
+.DS_Store
+.playwright-cli/
+.ralph/*.state.json
+.ralph/*.lock
+.ralph/*.log
+output/playwright/**/*.log
