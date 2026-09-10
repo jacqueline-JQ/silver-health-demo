@@ -21,7 +21,7 @@
   ];
   function intent(text,current='home') {
     if(/推荐.*药|应该.*(吃|服)|加量|减量|补吃|换药|停药|吃什么药好|危险吗|正常吗|诊断|治疗/.test(text))return 'medical';
-    if(/今天.*(什么药|吃什么)|晚上.*吃什么|用药安排|几点|吃多少|提醒时间|计划用量|查询/.test(text))return 'query';
+    if(/今天.*(什么药|吃什么)|(?:今晚|晚上|晚间).*(吃什么|什么药)|用药安排|几点|吃多少|提醒时间|计划用量|查询/.test(text))return 'query';
     if(/添加.*药|建.*计划|药名|每次/.test(text))return 'plan';
     if(/血压|高压|低压|收缩压|舒张压|血脂|胆固醇|甘油三酯|HDL|LDL|身高|体重|体脂/i.test(text))return 'health';
     if(/提醒.*(妈妈|爸爸|家人|长辈|TA)|主动提醒/.test(text))return 'remind';
@@ -35,12 +35,19 @@
     // 只接受完整支持陈述；未知后缀、问句和条件句均交给本人确认。
     const clauses=text.trim().replace(/[。！!]$/,'').replace(/\s/g,'').split(/[，,；;]/),statement=clauses.shift();
     const name=taskName?`(?:${taskName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})?`:'';
-    const prefix=`(?:我|这次|这一次|本次|刚才|后来|现在)*${name}`,dose=`(?:只)?(?:吃了|服用了)?${NUM}${UNIT}`;
+    const prefix=`(?:这次药|这一次药|这个药|我|这次|这一次|本次|刚才|后来|现在)*${name}`,dose=`(?:只)?(?:吃了|服用了)?${NUM}${UNIT}`;
     const facts={taken:`(?:已经(?:吃过|吃|服用)了?|已服用|吃过了?|吃了|服用了|(?:只)?(?:吃了|服用了)${NUM}${UNIT})`,not_taken:'(?:还没有吃过?|还没吃过?|没有吃过?|没吃过?|未服用|尚未服用)',skipped:'(?:无需服用|不用吃|不需要吃|不服)'};
     for(const [fact,pattern] of Object.entries(facts)){
-      if(!new RegExp(`^${prefix}${pattern}$`).test(statement))continue;
+      const match=new RegExp(`^${prefix}(${pattern})$`).exec(statement);if(!match)continue;
       if(clauses.length&&(fact!=='taken'||!clauses.every(part=>new RegExp(`^(?:${dose}|(?:实际时间[为是]?)?\\d{1,2}[:：]\\d{2})$`).test(part))))return {ambiguous:true};
-      return {fact};
+      // 只从已通过整句白名单的事实正文和后缀提取，不扫描药名里的数字。
+      const details=fact==='taken'?[match[1],...clauses].flatMap(part=>{
+        const amount=part.match(new RegExp(`^(?:只)?(?:吃了|服用了)?(${NUM})(${UNIT})$`));
+        if(amount)return [{kind:'dose',value:number(amount[1]),unit:amount[2]}];
+        const time=part.match(/^(?:实际时间[为是]?)?(\d{1,2}[:：]\d{2})$/);
+        return time?[{kind:'time',text:time[1]}]:[];
+      }):[];
+      return details.length?{fact,details}:{fact};
     }
     return {ambiguous:true};
   }

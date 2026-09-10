@@ -253,7 +253,7 @@
       c.intent=inferred;let e=data.doseEvents.find(e=>e.id===c.selectedId&&e.profileId===c.targetId&&!e.cancelledAt);
       const all=data.doseEvents.filter(t=>t.profileId===c.targetId&&!t.cancelledAt);
       const named=all.some(t=>text.includes(t.snapshot.name));
-      const otherTarget=text.match(/^(.{1,50}?)(?:已经(?:吃|服)|吃过|还没吃|未服用|没有按时服用)/)?.[1]?.replace(/我|这次|这回|这个药|这项|刚才|后来|现在|今天|早餐|午餐|晚餐|睡前|的|[，, ]/g,'');
+      const otherTarget=text.match(/^(.{1,50}?)(?:已经(?:吃|服)|吃过|还没吃|未服用|没有按时服用)/)?.[1]?.replace(/这次药|这一次药|我|这次|这回|这个药|这项|刚才|后来|现在|今天|早餐|午餐|晚餐|睡前|的|[，, ]/g,'');
       if(otherTarget&&!named){c.cards=[];c.selectedId=null;chatMessage(c,'还没有找到您提到的对应任务。请明确选择已有任务；不会沿用上一种药来记录，也不会新建临时服药记录。');return;}
       if(named){const found=C.taskFilter(text,all,today());e=found.length===1?found[0]:null;c.selectedId=e?.id||null;c.cards=found.map(t=>t.id);}
       if(!e){c.cards=C.taskFilter(text,inferred==='makeup'?all.filter(t=>stateOf(t)==='overdue'):all.filter(t=>t.date===today()),today()).map(t=>t.id);chatMessage(c,c.cards.length?'请先选择对应的药品、原日期与时段，再明确本次声明；不会猜测或批量打卡。':'还没有找到对应任务。请选择已有任务，或创建适用计划；不会新建无计划的临时服药记录。');return;}
@@ -264,8 +264,8 @@
       if(declaration.ambiguous){c.ambiguous=true;chatMessage(c,'这一次到现在还没有服用，还是后来已经服用了？未明确前保留原记录。');return;}
       if(declaration.fact){if(resolved(e)){chatMessage(c,'这次已有声明。若需修改，请进入“更正记录”，不会重复记录。');return;}
         if(declaration.fact==='skipped'){openModal('dose-confirm',{eventId:e.id,status:'skipped',chatKey:c.key,actual:text});return;}
-        const selfDose=text.match(/吃(?:过了|了)?(半|一|两|\d+(?:\.\d+)?)(片|粒|包|袋|毫升)/);const differs=selfDose&&(C.number(selfDose[1])!==Number(e.snapshot.doseValue)||selfDose[2]!==e.snapshot.doseUnit);
-        const actual=/\d|半片|一片|两片|点/.test(text)?`用户自述（未经核验）：${text}${differs?'；自述用量与计划不同，仅保留本人声明，不生成剩余剂量任务。':''}`:null;
+        const details=declaration.details||[],differs=details.some(part=>part.kind==='dose'&&(part.value!==Number(e.snapshot.doseValue)||part.unit!==e.snapshot.doseUnit));
+        const actual=details.length?`用户自述（未经核验）：${text}${differs?'；自述用量与计划不同，仅保留本人声明，不生成剩余剂量任务。':''}`:null;
         recordDose(e.id,declaration.fact,{actual,inputSource:source,operationId:id('chat-record')});return;}
       chatMessage(c,'请明确选择已服用、未服用或本次无需服用；不用补填实际时间和数量。');return;
     }
@@ -370,6 +370,7 @@
       themeReady=true;document.documentElement.dataset.os=p.os;app.style.visibility='visible';publishState();return {theme:p.os};
     }
     if(type==='VISIBILITY') {
+      if(!p.visible)preserveDraft();
       const resumed=p.visible&&!stageVisible;stageVisible=p.visible;if(resumed){visitId=p.visitId;dismissedFocus.clear();}
       app.inert=!p.visible;document.activeElement?.blur?.();if(resumed){render();scheduleFocus();}return {};
     }
@@ -811,7 +812,18 @@
       const c=chatSession();if(c){c.plan=modal.draft;c.sources[field.name]='手动修改';c.plan.source=withSource(c.plan.source,'手动修改');}
       if(modal.errors) { reconcileMedicineErrors();paintErrors(); }
     }
-    if(modal?.type==='health-form' && field.closest('[data-form="health"]') && field.name!=='healthType'){modal.draft=collectHealth(field.closest('form'));syncChatDraft();}
+    if(modal?.type==='health-form' && field.closest('[data-form="health"]') && field.name!=='healthType'){
+      modal.draft=collectHealth(field.closest('form'));
+      const c=chatSession();if(c){
+        modal.draft.source=withSource(modal.draft.source,'手动修改');
+        // 只有本人在标明单位的对应字段作出有效修改，才解除该字段的解析冲突。
+        if(c.healthConflicts?.[field.name]&&TYPES[modal.healthType].fields.some(([key])=>key===field.name)&&field.value!==''&&field.validity.valid&&Number.isFinite(Number(field.value))){
+          delete c.healthConflicts[field.name];c.healthIssues=Object.values(c.healthConflicts);
+          const error=document.getElementById('form-error');if(error?.textContent.includes('单位无法确认'))error.textContent=c.healthIssues.join(' ');
+        }
+      }
+      syncChatDraft();
+    }
   });
 
   function collectHealth(form) {
@@ -911,7 +923,7 @@
     }
     if (form.dataset.form === 'health') {
       const draft = collectHealth(form);
-      if(chatSession()?.healthIssues?.length)return formError(`${chatSession().healthIssues.join(' ')}请补充包含明确单位的新输入再核对。`);
+      if(chatSession()?.healthIssues?.length)return formError(`${chatSession().healthIssues.join(' ')}请按表单标注单位修正对应指标，或回到对话补充明确单位。`);
       if (!Object.keys(draft.values).length && !draft.extras.length) return formError('请至少填写一项测量值。');
       if ([...Object.values(draft.values), ...draft.extras.map(e => e.value)].some(v => v === '' || !Number.isFinite(Number(v)) || Number(v) < 0)) return formError('测量值必须是非负数字。');
       if (modal.healthType==='body' && ['height','weight'].some(k=>draft.values[k]!=null && !(Number(draft.values[k])>0))) return formError('身高和体重必须大于 0，并按标注单位填写。');

@@ -35,11 +35,12 @@
     call.promise.then(result=>{
       if(call.requestId!==themePending)return;
       if(!result.ok||result.theme!==os)throw Error('主题确认未完成，请重试连接');
-      themePending='';phone.dataset.os=os;document.querySelectorAll('.system-picker button').forEach(button=>{button.setAttribute('aria-pressed',String(button.dataset.os===os));});
+      themePending='';phone.dataset.os=os;document.documentElement.dataset.os=os;$('system-reference').textContent={ios:'iOS 18',harmonyos:'HarmonyOS 5',android:'Android 15 / Material 3'}[os];paintDesktopTime();document.querySelectorAll('.system-picker button').forEach(button=>{button.setAttribute('aria-pressed',String(button.dataset.os===os));});
       ready=true;container.style.visibility='visible';$('recovery').hidden=true;showApp(desiredVisible);updateStatus();
     }).catch(error=>{feedback(error.message,true);$('recovery').hidden=false;});
   }
   function updateStatus() {if(snapshot)$('ready-status').textContent=`${ready?'已就绪':'同步主题中'} · ${snapshot.account.name} · ${snapshot.account.role==='elder'?'长辈端':'子女端'}`;}
+  function paintDesktopTime(){if(!snapshot)return;$('desktop-time').textContent=os==='android'?snapshot.time.replace(':','\n'):snapshot.time;$('desktop-time').setAttribute('aria-label',`演示时间 ${snapshot.time}`);}
   function setValue(id,value) {if(document.activeElement!==$(id))$(id).value=value;}
   function options(id,items,selected) {
     const select=$(id),signature=JSON.stringify(items);
@@ -49,7 +50,7 @@
   function receiveState(next) {
     if(!next||!next.account||!Array.isArray(next.accounts)||!Array.isArray(next.profiles)||!Array.isArray(next.notifications))return;
     const previous=snapshot;snapshot=next;
-    $('status-time').textContent=next.time;$('desktop-time').textContent=next.time;
+    $('status-time').textContent=next.time;paintDesktopTime();
     const date=new Date(`${next.date}T00:00:00Z`);$('desktop-date').textContent=`${date.getUTCMonth()+1}月${date.getUTCDate()}日 星期${'日一二三四五六'[date.getUTCDay()]}`;
     options('account-select',next.accounts.map(a=>[a.id,`${a.name} · ${a.role==='elder'?'长辈':'子女'}`]),next.account.id);
     options('profile-select',next.profiles.map(p=>[p.id,p.name]),next.profileId);$('profile-select').disabled=next.account.role==='elder';
@@ -95,6 +96,7 @@
     if(m.type==='BANNER'&&m.payload.notification)return showBanner(m.payload.notification);
   });
   $('launch-app').addEventListener('click',()=>showApp(true));$('open-app').addEventListener('click',()=>showApp(true));$('show-desktop').addEventListener('click',()=>showApp(false));$('home-indicator').addEventListener('click',()=>showApp(false));
+  $('launch-service').addEventListener('click',()=>showApp(true));
   $('banner-close').addEventListener('click',hideBanner);$('banner-open').addEventListener('click',()=>openNotice(currentNotice));
   $('account-select').addEventListener('change',event=>send('SWITCH_ACCOUNT',{accountId:event.target.value}));$('profile-select').addEventListener('change',event=>send('SWITCH_PROFILE',{profileId:event.target.value}));
   $('apply-clock').addEventListener('click',()=>{if(!$('day-offset').reportValidity()||!$('clock-time').reportValidity())return;send('CLOCK',{dateOffset:Number($('day-offset').value),time:$('clock-time').value});});

@@ -1,0 +1,60 @@
+[
+  {
+    "suite": "rules",
+    "passed": 13,
+    "checks": [
+      "PASS 1 seed valid and deterministic history samples",
+      "PASS 2 all four exact natural boundaries and declaration before reminder",
+      "PASS 3 cross-slot snooze endpoints, once, refresh and undo retain allowance",
+      "PASS 4 within-slot snooze never creates early overdue; past task can snooze",
+      "PASS 5 three facts, no invented actual values, corrections append history",
+      "PASS 6 strict current stars, historical first entry and corrections frozen",
+      "PASS 7 cross-midnight protection preserves original identity and original day star",
+      "PASS 8 create current/future only; started snapshots immutable at exact start",
+      "PASS 9 future start and inclusive end date; no duplicate tasks",
+      "PASS 10 legacy migration keeps enum source, no inferred meal or actual time",
+      "PASS 11 invalid archive/duplicates/references/snooze/settings rejected",
+      "PASS 12 shared N3 cooldown survives other family identity and undo",
+      "PASS 13 rewinding cannot edit/cancel once-started tasks or erase declarations"
+    ],
+    "errors": []
+  },
+  {
+    "suite": "notifications",
+    "passed": 9,
+    "checks": [
+      "PASS N1到点、自动聚焦和每轮去重",
+      "PASS 超时N2只发一次、不向长辈错投",
+      "PASS 5分钟到期新增N1、不到时段截止不发N2",
+      "PASS 跨时段延后保护、到期N2新轮且不删除旧N2",
+      "PASS N3账号权限、共享冷却和操作ID去重",
+      "PASS 模拟关通知、失败、原ID重试和有效态抑制",
+      "PASS 23:55本机确认、跨日接收只更新元数据且星星保留",
+      "PASS 离线延后不伪称远端抑制；同步后仍关联原日期",
+      "PASS 通知字段损坏被拒绝；旧记录保留迁移"
+    ],
+    "errors": []
+  },
+  {
+    "suite": "conversation",
+    "passed": 15,
+    "checks": [
+      "PASS 否定和含糊声明严格区分",
+      "PASS 早晚不擅自映射，半片改口保留单位",
+      "PASS 未知表达不覆盖手动字段或餐时",
+      "PASS 两个时段的餐时分别解析，不以末尾覆盖",
+      "PASS 餐时否定不删除服用时段",
+      "PASS 完整句子中重复提及的餐时归属于正确行",
+      "PASS 疑问条件矛盾或否定记录指令不产生事实",
+      "PASS 只接受完整支持声明，不依赖疑问词黑名单",
+      "PASS 孤立餐时否定保持全部原字段",
+      "PASS 分时不同量与非每日周期阻止候选",
+      "PASS 数字自定义单位和明确次数可校验",
+      "PASS 不同测量单位不换算为默认单位",
+      "PASS 身体数值时间与用户转述来源保留",
+      "PASS 查询优先且不以问题触发保存",
+      "PASS 本人细节来自白名单片段，不从药名或计划推造"
+    ],
+    "errors": []
+  }
+]

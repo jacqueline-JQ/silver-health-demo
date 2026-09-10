@@ -7,7 +7,7 @@
 - [x] 第2步首页、表单、BMI、取消入口清理；73项浏览器与13组规则通过，提交434878c、标记mvp-v2-step-02
 - [x] 第3步iOS演示、N1/N2/N3、聚焦与模拟同步；59+22新增浏览器、75回归、22组规则通过；版本mvp-v2-step-03
 - [x] 第4步双助手与复核补修完成；96项新增、134项回归、36组规则通过；版本mvp-v2-step-04
-- [ ] 第5步鸿蒙安卓、全82项验收、提交mvp-v2-step-05
+- [x] 第5步三系统及82项台账已落盘，701项浏览器/37组规则通过；最终复核通过，完成版本mvp-v2-step-05
 
 ## Verification
 第1步：node tests/rules.test.cjs 13组通过；Playwright CLI运行tests/step01.browser.js共46项通过，0脚本错误；稳定截图及result.json在output/playwright/step-01/。
@@ -17,4 +17,4 @@
 纯规则模块rules.js供app.js及Node检查复用；全部状态仍由app.js commit保存。后台子代理未产出文件，已由主代理完成。
 
 ## Final Verification
-全五步结束时填写外部可重新执行的最终命令与结果。
+第5步最终证据：output/playwright/step-05/；82项映射、检查名称及复现命令：output/验收/验收台账.md和JSON；统计重建：python3 tests/build-acceptance-ledger.py。701项浏览器/37组规则全部通过；未做真人读屏或真实服务验证，范围见output/验收/验证总览.md。

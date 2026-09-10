@@ -1,4 +1,4 @@
-async page=>{
+async(page,{artifactDir='output/playwright/step-03'}={})=>{
   const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
   const ok=(v,label)=>{if(!v)throw Error(`${label}；最后通过${checks.at(-1)}`);checks.push(label);};
   await page.goto('http://127.0.0.1:8765/demo.html');await page.waitForFunction(()=>document.getElementById('ready-status').textContent.includes('已就绪'));
@@ -32,9 +32,9 @@ async page=>{
   // WAAPI可暂停CSS transition，从中间帧检查不是终态截图冒充实际动效。
   await page.evaluate(()=>{const el=document.getElementById('app-container');el.style.transitionDuration='1000ms';});await page.locator('#launch-app').click();
   const motion=await page.locator('#app-container').evaluate(el=>{const animations=el.getAnimations();animations.forEach(a=>{a.pause();a.currentTime=120;});return{count:animations.length,transform:getComputedStyle(el).transform,opacity:getComputedStyle(el).opacity};});
-  ok(motion.count>0&&motion.transform!=='none','应用展开有可检查的实际中间帧');await page.screenshot({path:'output/playwright/step-03/motion-midframe.png'});await page.locator('#app-container').evaluate(el=>{el.getAnimations().forEach(a=>{a.finish();});el.style.transitionDuration='';});
-  await page.locator('#show-desktop').click();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'output/playwright/step-03/ios-desktop-overview.png',animations:'disabled'});
-  await show();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'output/playwright/step-03/ios-app-overview.png',animations:'disabled'});
+  ok(motion.count>0&&motion.transform!=='none','应用展开有可检查的实际中间帧');await page.screenshot({path:`${artifactDir}/motion-midframe.png`});await page.locator('#app-container').evaluate(el=>{el.getAnimations().forEach(a=>{a.finish();});el.style.transitionDuration='';});
+  await page.locator('#show-desktop').click();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifactDir}/ios-desktop-overview.png`,animations:'disabled'});
+  await show();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${artifactDir}/ios-app-overview.png`,animations:'disabled'});
   const reversal=await page.evaluate(()=>{const el=document.getElementById('app-container');el.style.transitionDuration='1000ms';document.getElementById('show-desktop').click();getComputedStyle(el).transform;el.getAnimations().forEach(a=>{a.pause();a.currentTime=100;});const before=new DOMMatrix(getComputedStyle(el).transform);document.getElementById('open-app').click();const after=new DOMMatrix(getComputedStyle(el).transform);el.getAnimations().forEach(a=>{a.finish();});el.style.transitionDuration='';return Math.max(Math.abs(before.a-after.a),Math.abs(before.d-after.d),Math.abs(before.e-after.e),Math.abs(before.f-after.f));});ok(reversal<.1,'收起中反向展开连续承接当前变换');
   await page.emulateMedia({reducedMotion:'reduce'});await page.locator('#show-desktop').click();await show();ok(await page.locator('#app-container').evaluate(el=>getComputedStyle(el).transform)==='none','减少动态效果静态展开');await page.emulateMedia({reducedMotion:'no-preference'});
   await page.goto('http://127.0.0.1:8765/index.html');ok(await page.getByRole('heading',{name:'首页看板',exact:true}).count()===1,'原index入口独立可用');

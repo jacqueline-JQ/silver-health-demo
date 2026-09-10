@@ -29,6 +29,7 @@
           <div class="desktop-app decorative"><svg><use href="#message-mark"/></svg><span>信息</span></div>
           <div class="desktop-app decorative"><svg><use href="#settings-mark"/></svg><span>设置</span></div>
         </div>
+        <button class="harmony-service" id="launch-service"><span>家庭用药</span><strong>把关心放在手边</strong><span>继续家庭记录 →</span></button>
         <div class="desktop-search" aria-hidden="true">⌕ 搜索</div>
         <div class="dock" aria-label="桌面装饰图标"><svg><use href="#phone-mark"/></svg><svg><use href="#browser-mark"/></svg><svg><use href="#message-mark"/></svg><svg><use href="#music-mark"/></svg></div>
       </div>
@@ -36,13 +37,13 @@
       <div class="notification-banner" id="banner" inert aria-hidden="true"><button class="banner-open" id="banner-open"><span class="banner-heading"><svg><use href="#app-mark"/></svg><strong>药安心</strong><span>刚刚</span></span><strong id="banner-title"></strong><span id="banner-body"></span></button><button id="banner-close" class="banner-close" aria-label="关闭模拟通知横幅">×</button></div>
       <button id="home-indicator" class="home-indicator" aria-label="返回模拟桌面"><span></span></button>
     </div></div>
-    <p class="stage-caption">网页模拟手机 · 辅助系统图标仅作桌面示意</p>
+    <p class="stage-caption"><span id="system-reference">iOS 18</span> 风格网页演示 · 辅助图标仅作桌面示意</p>
   </section>
   <aside class="controls" aria-label="比赛演示控制区">
     <span class="eyebrow">可交互原型 · 本地演示</span><h1>一份记录，<br>两份安心。</h1><p class="control-intro">从家庭建计划，到长辈本人打卡。桌面、提醒与应用共同完成这段流程。</p>
     <div class="ready-status" id="ready-status" role="status">正在准备应用…</div>
     <div class="recovery" id="recovery" hidden><p>应用暂未就绪，可重试连接或单独打开应用。</p><button id="retry-ready">重试连接</button><a href="index.html">独立打开应用</a></div>
-    <div class="system-picker" role="group" aria-label="模拟系统"><button data-os="ios" aria-pressed="true">iOS</button><button data-os="harmonyos" disabled title="第5步完成">鸿蒙</button><button data-os="android" disabled title="第5步完成">安卓</button></div>
+    <div class="system-picker" role="group" aria-label="模拟系统"><button data-os="ios" aria-pressed="true">iOS</button><button data-os="harmonyos" aria-pressed="false">鸿蒙</button><button data-os="android" aria-pressed="false">安卓</button></div>
     <div class="control-section"><h2>01 · 当前会话</h2><label for="account-select">演示账号</label><select id="account-select"></select><label for="profile-select">当前长辈</label><select id="profile-select"></select><div class="control-actions"><button id="open-app" class="primary">打开应用</button><button id="show-desktop">返回桌面</button></div></div>
     <div class="control-section"><h2>02 · 受控演示时间</h2><div class="time-controls"><label>日期偏移<input id="day-offset" type="number" value="0" min="0" max="31" step="1"></label><label>北京时间<input id="clock-time" type="time" value="21:15"></label></div><button id="apply-clock">应用时间</button><div class="preset-times" aria-label="演示时刻预设"><button data-clock="07:55">早餐前</button><button data-clock="08:00">早餐到点</button><button data-clock="11:00">早餐超时</button><button data-clock="15:50">午餐15:50</button><button data-clock="16:20">16:20</button><button data-clock="23:55">23:55</button><button data-clock="00:10" data-offset="1">次日00:10</button></div></div>
     <div class="control-section"><h2>03 · 模拟系统通知</h2><div class="scene-actions"><button data-scene="N1">N1 到点提醒</button><button data-scene="N2">N2 超时提醒</button><button data-scene="N3">N3 子女提醒</button></div><p class="control-note">接收账号需显式切换。N3 由子女在应用中点击“提醒 TA”。</p><label for="notice-select">当前账号的通知</label><select id="notice-select"></select><div class="control-actions"><button id="replay-notice">重播横幅</button><button id="open-notice">打开关联记录</button></div><p class="control-note" id="delivery-status">尚无通知</p></div>

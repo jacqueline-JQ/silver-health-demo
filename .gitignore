@@ -4,6 +4,9 @@
 .ralph/*.lock
 .ralph/*.log
 output/playwright/**/*.log
+!output/playwright/step-05/rules.log
+!output/playwright/step-05/notifications.log
+!output/playwright/step-05/conversation.log
 output/playwright/**/*current.yml
 output/playwright/**/failure.png
 output/playwright/**/failure.json

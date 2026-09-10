@@ -1988,3 +1988,38 @@ button:not(:disabled):active { transform: scale(.97); }
   .slot-head,.slot-line { grid-template-columns: 22px minmax(0,1fr) 86px 60px; gap: 4px; padding: 10px 5px; }
   .slot-name small { overflow-wrap: normal; word-break: normal; }
 }
+/* 主题只改变表面、导航与控件外观，保持同一语义和权限。 */
+[data-os="harmonyos"] { --primary:#315eb8;--primary-dark:#234887;--primary-soft:#e9effb;--bg:#f1f3f5;--ink:#202b3c;font-family:'HarmonyOS Sans SC','PingFang SC',system-ui,sans-serif; }
+[data-os="harmonyos"] .hero,[data-os="harmonyos"] .page-header { background:#315b9c;color:#fff; }
+[data-os="harmonyos"] .card,[data-os="harmonyos"] .med-card,[data-os="harmonyos"] .calendar-card,[data-os="harmonyos"] .health-summary { border-radius:24px;box-shadow:none; }
+[data-os="harmonyos"] .button-primary,[data-os="harmonyos"] .button-secondary { border-radius:28px;min-height:52px; }
+[data-os="harmonyos"] .font-elder .button-primary,[data-os="harmonyos"] .font-elder .button-secondary { min-height:60px; }
+[data-os="harmonyos"] .bottom-nav { background:#f9fbff;border-top:1px solid #dce4f0;backdrop-filter:none; }
+[data-os="harmonyos"] .nav-icon-wrap { width:35px;height:30px;border-radius:50%;display:grid;place-items:center; }
+[data-os="harmonyos"] .nav-item.is-active .nav-icon-wrap { background:#e0e9fc;color:#315eb8; }
+[data-os="harmonyos"] .modal-header { background:#fff;backdrop-filter:none;border-bottom:1px solid #edf0f4; }
+[data-os="harmonyos"] .modal-sheet { border-radius:30px 30px 0 0;box-shadow:0 -8px 24px #1d2c4414; }
+[data-os="harmonyos"] .focus-sheet,[data-os="harmonyos"] .chat-sheet { border-radius:0; }
+[data-os="harmonyos"] .filter-tabs,[data-os="harmonyos"] .mode-tabs { padding:4px;border-radius:24px;background:#e9edf4; }
+[data-os="harmonyos"] .filter-button,[data-os="harmonyos"] .mode-tab { border:0;border-radius:20px; }
+[data-os="harmonyos"] .filter-button.is-active,[data-os="harmonyos"] .mode-tab.is-active { background:#fff;color:#214980;box-shadow:0 2px 6px #354d7210; }
+[data-os="android"] { --primary:#635183;--primary-dark:#493762;--primary-soft:#eee5f6;--bg:#f8f5fb;--ink:#292431;--line:#e1dce8;font-family:Roboto,'Noto Sans SC',system-ui,sans-serif; }
+[data-os="android"] .hero,[data-os="android"] .page-header { background:#635183;color:#fff; }
+[data-os="android"] .app-shell,[data-os="android"] .app-main { background:#f8f5fb; }
+[data-os="android"] .card,[data-os="android"] .med-card,[data-os="android"] .calendar-card,[data-os="android"] .health-summary { border-radius:20px;box-shadow:none; }
+[data-os="android"] .button-primary { border-radius:28px;box-shadow:none; }
+[data-os="android"] .button-secondary { border-radius:28px;border:1px solid #80758e;background:transparent;color:#594871; }
+[data-os="android"] .bottom-nav { background:#eee8f3;border:0;backdrop-filter:none; }
+[data-os="android"] .nav-icon-wrap { width:58px;height:30px;border-radius:18px;display:grid;place-items:center; }
+[data-os="android"] .nav-item.is-active .nav-icon-wrap { background:#dacbec;color:#302341; }
+[data-os="android"] .nav-item.is-active { color:#312639;font-weight:650; }
+[data-os="android"] .modal-sheet { background:#f7f2fa;border-radius:28px 28px 0 0;box-shadow:0 -5px 22px #34243e20; }
+[data-os="android"] .modal-header { background:#f7f2fa;backdrop-filter:none;border:0; }
+[data-os="android"] .focus-sheet,[data-os="android"] .chat-sheet { border-radius:0; }
+[data-os="android"] .filter-tabs,[data-os="android"] .mode-tabs { padding:0;background:transparent;border:1px solid #817588;border-radius:25px;overflow:hidden; }
+[data-os="android"] .filter-button,[data-os="android"] .mode-tab { border:0;border-radius:0;background:transparent;box-shadow:none; }
+[data-os="android"] .filter-button+.filter-button { border-left:1px solid #817588; }
+[data-os="android"] .filter-button.is-active,[data-os="android"] .mode-tab.is-active { background:#e2d5ef;color:#352347;box-shadow:none; }
+[data-os="android"] .fab { border-radius:18px;background:#e3d2f4;color:#392448;box-shadow:0 3px 8px #49315c24; }
+[data-os="android"] .chat-message { background:#eae4ef;border-radius:18px; }[data-os="android"] .chat-message.user { background:#e3d1ef;border-radius:18px 18px 4px 18px; }
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.app-shell .modal-header,.app-shell .bottom-nav{backdrop-filter:none;background:var(--paper,#fff);}}
