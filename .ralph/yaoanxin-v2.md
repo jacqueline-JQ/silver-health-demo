@@ -7,7 +7,7 @@
 - [x] 第2步首页、表单、BMI、取消入口清理；73项浏览器与13组规则通过，提交434878c、标记mvp-v2-step-02
 - [x] 第3步iOS演示、N1/N2/N3、聚焦与模拟同步；59+22新增浏览器、75回归、22组规则通过；版本mvp-v2-step-03
 - [x] 第4步双助手与复核补修完成；96项新增、134项回归、36组规则通过；版本mvp-v2-step-04
-- [x] 第5步三系统及82项台账已落盘，701项浏览器/37组规则通过；最终复核通过，完成版本mvp-v2-step-05
+- [x] 第5步三系统及82项台账已落盘，701项浏览器/37组规则通过；最终复核通过，mvp-v2-step-05-fix-01补齐遗漏测试源码，原五步标签保留
 
 ## Verification
 第1步：node tests/rules.test.cjs 13组通过；Playwright CLI运行tests/step01.browser.js共46项通过，0脚本错误；稳定截图及result.json在output/playwright/step-01/。

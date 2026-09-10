@@ -15,4 +15,11 @@ test('数字自定义单位和明确次数可校验',()=>{const parsed=C.parsePl
 test('不同测量单位不换算为默认单位',()=>{const d={values:{},extras:[],note:'',measuredAt:'2026-09-13T08:00'};const r=C.parseHealth('总胆固醇120 mg/dL',d,'blood_lipid',R.DAY,'21:15');assert.equal(r.draft.values.tc,undefined);assert.equal(r.issues.length,1);});
 test('身体数值时间与用户转述来源保留',()=>{const d={values:{},extras:[],note:'',measuredAt:'2026-09-13T21:15'};const r=C.parseHealth('身高160厘米，体重60公斤，今天08:30测量，医生说遵照原安排',d,'blood_pressure',R.DAY,'21:15');assert.equal(r.type,'body');assert.equal(r.draft.values.height,'160');assert.equal(r.draft.measuredAt,'2026-09-13T08:30');assert.match(r.draft.note,/用户转述/);});
 test('查询优先且不以问题触发保存',()=>{assert.equal(C.intent('今天晚上吃什么','home'),'query');assert.equal(C.intent('几点提醒','record'),'query');assert.equal(C.intent('应该加量吗','plan'),'medical');assert.equal(C.intent('这次吃过了','home'),'record');});
+test('本人细节来自白名单片段，不从药名或计划推造',()=>{
+  for(const [text,value,unit] of [['这次已经吃过了，只吃了半粒',.5,'粒'],['这次已经吃过了，三片',3,'片'],['这次已经吃过了，一包',1,'包'],['这次吃了三片',3,'片']])assert.deepEqual(C.declaration(text),{fact:'taken',details:[{kind:'dose',value,unit}]});
+  assert.deepEqual(C.declaration('这次已经吃过了，实际时间为08:10'),{fact:'taken',details:[{kind:'time',text:'08:10'}]});
+  assert.deepEqual(C.declaration('这次药吃过了'),{fact:'taken'});
+  assert.deepEqual(C.declaration('维生素B12已经吃过了','维生素B12'),{fact:'taken'});
+  assert.deepEqual(C.declaration('这次已经吃过了，只吃了半粒吗？'),{ambiguous:true});
+});
 console.log(`PASS ${checks.length} conversation rule groups`);
