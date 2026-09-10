@@ -1,6 +1,8 @@
-# MVP v2 需求审核意见
+# 药安心 MVP v2 需求审核意见（历史审核）
 
-审核对象为当前工作区的《老年人智慧健康管理_MVP文档_v2.md》（986 行）。v2.1 过渡稿已在页首声明归档，本文以 v2 主文档为实现基准；v1 和现有代码仅用于核对继承规则及实现影响。
+> 本文保留对早期 986 行稿件的历史审核意见，不代表最新需求或当前未解决问题。产品改名时仅同步名称和文件路径；文末行号是旧稿定位，不保证对应现稿。开发以最新《药安心_MVP文档_v2.md》和实施步骤为准。
+
+审核对象为当时的《药安心_MVP文档_v2.md》（986 行）。v2.1 过渡稿已在页首声明归档，本文以当时的 v2 主文档为审核基准；v1 和当时的代码仅用于核对继承规则及实现影响。
 
 **结论：实现前最需要收敛的是时间判定、服药事实、聚焦卡生命周期和计划生效规则。另有两类文档维护问题：已确认决议没有同步到前文；“去 PRO”章节混入了尚无完整规格的新功能。**
 
@@ -204,26 +206,26 @@ v2.1: d7da188eb92909cde077859c71c1cdcbf0f459f2dd7f2e779b22c1f03dfc3ec8
 app.js: dd5ff6b9ae1794b8b2e5ea5383051ec1fda9601e23318556127ae0a6532ba685
 ```
 
-[v2-snooze-end]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:348
-[v2-d06]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:879
-[v2-slot-boundary]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:242
-[v2-overdue-wording]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:245
-[v2-states]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:419
-[v2-late]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:426
-[v2-focus]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:517
-[v2-focus-actions]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:559
-[v2-actual-dose]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:321
+[v2-snooze-end]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:348
+[v2-d06]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:879
+[v2-slot-boundary]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:242
+[v2-overdue-wording]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:245
+[v2-states]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:419
+[v2-late]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:426
+[v2-focus]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:517
+[v2-focus-actions]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:559
+[v2-actual-dose]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:321
 [code-record]: /Users/jacqueline/Documents/projects/复客松_20260913/app.js:391
-[v1-undo]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v1.md:293
-[v2-d07]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:880
+[v1-undo]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v1.md:293
+[v2-d07]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:880
 [code-generate]: /Users/jacqueline/Documents/projects/复客松_20260913/app.js:94
 [code-events]: /Users/jacqueline/Documents/projects/复客松_20260913/app.js:91
 [code-stop]: /Users/jacqueline/Documents/projects/复客松_20260913/app.js:582
-[v2-calendar-stale]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:96
-[v2-calendar-rule]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:448
-[v2-flat-features]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:641
-[v2-snooze]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:337
-[v2-notifications]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:574
-[v2-d10]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:883
-[v2-mascot]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:632
-[v2-decisions]: /Users/jacqueline/Documents/projects/复客松_20260913/老年人智慧健康管理_MVP文档_v2.md:870
+[v2-calendar-stale]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:96
+[v2-calendar-rule]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:448
+[v2-flat-features]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:641
+[v2-snooze]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:337
+[v2-notifications]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:574
+[v2-d10]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:883
+[v2-mascot]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:632
+[v2-decisions]: /Users/jacqueline/Documents/projects/复客松_20260913/药安心_MVP文档_v2.md:870

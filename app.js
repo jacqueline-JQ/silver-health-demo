@@ -1,4 +1,4 @@
-/* 银龄健康管家：同一浏览器内的家庭协同演示，不连接任何医疗或推送服务。 */
+/* 药安心：同一浏览器内的家庭协同演示，不连接任何医疗或推送服务。 */
 (() => {
   'use strict';
 
@@ -126,7 +126,7 @@
   const safety = () => `<aside class="safety-note">${icon('shield')}<span>仅含演示数据，不提供医疗建议，不应用于真实用药决策。</span></aside>`;
 
   function topbar() {
-    return `<div class="topbar"><div class="brand-lockup"><span class="brand-mark">${icon('heartbeat')}</span>银龄健康管家</div><div class="header-tools">${button(icon('clock'), 'clock', 'header-icon-button', 'aria-label="调整演示时间" title="调整演示时间"')}${button(icon('users'), 'accounts', 'header-icon-button', 'aria-label="切换演示账号" title="切换演示账号"')}</div></div>`;
+    return `<div class="topbar"><div class="brand-lockup"><span class="brand-mark">${icon('heartbeat')}</span>药安心</div><div class="header-tools">${button(icon('clock'), 'clock', 'header-icon-button', 'aria-label="调整演示时间" title="调整演示时间"')}${button(icon('users'), 'accounts', 'header-icon-button', 'aria-label="切换演示账号" title="切换演示账号"')}</div></div>`;
   }
 
   function profileSelector() {
@@ -217,7 +217,7 @@
   function render() {
     const scroll = document.querySelector('.app-main')?.scrollTop || 0;
     const pages = { home: homePage, plans: plansPage, health: healthPage, me: mePage };
-    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>本地演示 · ${DAY} ${data.demoTime}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">银龄健康管家 · 家庭协同</footer></div>${view.page !== 'me' ? button(icon('plus'), 'quick-add', 'fab', 'aria-label="快速添加" title="快速添加"') : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
+    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>本地演示 · ${DAY} ${data.demoTime}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${view.page !== 'me' ? button(icon('plus'), 'quick-add', 'fab', 'aria-label="快速添加" title="快速添加"') : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
     document.querySelector('.app-main').scrollTop = scroll;
     renderModal();
     rememberView();
