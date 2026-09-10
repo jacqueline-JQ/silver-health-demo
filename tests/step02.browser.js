@@ -1,0 +1,68 @@
+async (page) => {
+  const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const ok=(x,label)=>{if(!x)throw Error(label);checks.push(label);};
+  const click=a=>page.locator(`[data-action="${a}"]:visible`).first().click();
+  const nav=p=>page.locator(`[data-action="navigate"][data-page="${p}"]`).click();
+  const state=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('silver-health-data-v1')));
+  const switchTo=async id=>{await click('accounts');await page.locator(`[data-action="switch-account"][data-id="${id}"]`).click();};
+  const clock=async time=>{await nav('me');await click('clock');await page.locator('[name="time"]').fill(time);await page.getByRole('button',{name:'确认时间',exact:true}).click();await nav('home');};
+  const field=(name,value)=>page.locator(`[name="${name}"]`).fill(value);
+  const review=()=>page.getByRole('button',{name:'核对用药计划',exact:true}).click();
+  await page.goto('http://127.0.0.1:8765/index.html');await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();
+  ok(await page.getByRole('button',{name:'点击添加用药打卡',exact:true}).count()===1 && await page.getByRole('button',{name:'点击添加身体数据',exact:true}).count()===1,'长辈两张快捷卡片');
+  await click('history');ok(await page.locator('#history-date').count()===1 && await page.getByRole('dialog').count()===0,'顶部时钟直达打卡历史');
+  await nav('plans');await click('quick-add');ok(await page.getByRole('dialog').getByRole('heading',{name:'添加药品打卡计划'}).count()===1,'用药加号直达计划');await click('close-modal');
+  await nav('health');await click('quick-add');ok(await page.locator('[data-form="health"]').count()===1,'身体加号直达测量');await click('close-modal');
+  await nav('home');await switchTo('child-li');ok(await page.getByRole('heading',{name:'首页看板'}).count()===1,'子女首页看板');
+  ok(await page.locator('.calendar-date.has-star[data-date="2026-09-10"]').count()===1 && await page.locator('.calendar-date.has-star').count()===1,'月历仅符合规则日点星');
+  ok(await page.locator('.calendar-date[data-date="2026-09-14"]').isDisabled(),'未来日期无星且不可提前记录');
+  ok(await page.locator('.calendar-date[data-date="2026-09-12"]').evaluate(el=>getComputedStyle(el).backgroundColor)==='rgba(0, 0, 0, 0)','未完成日期透明无底色');
+  await page.locator('[data-date="2026-09-10"]').click();ok(await page.locator('#history-date').inputValue()==='2026-09-10','日历带日期进入历史');
+  await nav('home');await click('profiles');await page.locator('[data-action="select-profile"][data-id="profile-wang"]').click();ok(await page.getByText('阿司匹林肠溶片',{exact:true}).count()===1 && await page.getByText('暂无记录',{exact:true}).count()>=1,'换长辈任务与空身体数据一起变化');
+  await click('home-add-med');ok(await page.locator('.target-caption').innerText().then(t=>t.includes('王叔叔')),'子女添加带入当前对象');await click('change-target');await page.locator('[data-action="select-target"][data-id="profile-zhang"]').click();ok(await page.locator('.target-caption').innerText().then(t=>t.includes('张阿姨')),'显式改选对象');await click('close-modal');
+  await switchTo('elder-zhang');await clock('06:00');await click('home-add-med');
+  ok(await page.locator('.slot-line').count()===4 && await page.locator('.slot-head > span').count()===4,'四时段四列表');
+  await review();ok(await page.getByRole('alertdialog').count()===1 && await page.locator('.field-invalid').count()>=4,'必填错误弹层和红框');await click('dismiss-errors');ok(await page.evaluate(()=>document.activeElement.name)==='name','关闭错误提示聚焦第一处错误');
+  await field('name','测试药 <安全>');ok(await page.locator('#field-name').getAttribute('aria-invalid')===null,'修正一项清除对应红框');await field('doseValue','0.5');await field('doseUnit','小包');
+  await page.locator('[name="slots"][value="早餐"]').check();ok(await page.locator('.slot-fieldset.field-invalid').count()===0,'勾选时段立即解除该项红框');await page.locator('[name="slots"][value="晚餐"]').check();
+  await page.locator('[data-action="meal"][data-slot="早餐"][data-meal="餐前"]').click();await page.locator('[data-action="meal"][data-slot="早餐"][data-meal="餐后"]').click();
+  ok(await page.locator('[data-slot="早餐"][data-meal="餐前"]').getAttribute('aria-pressed')==='false','餐时单行互斥');
+  await page.locator('[data-slot="早餐"][data-meal="餐后"]').click();ok(await page.locator('[data-slot="早餐"][data-meal="餐后"]').getAttribute('aria-pressed')==='false','餐时再次点击清除');
+  await page.locator('[data-slot="早餐"][data-meal="餐前"]').click();await page.locator('[data-slot="晚餐"][data-meal="餐后"]').click();
+  await page.locator('[data-action="time-picker"][data-slot="早餐"][data-part="hour"]').click();await field('hour','9');await field('minute','17');await page.getByRole('button',{name:'确认提醒时间',exact:true}).click();
+  ok((await page.locator('[data-slot="早餐"][data-part="hour"]').innerText()).includes('09'),'小时分钟输入回显');
+  await page.locator('[data-action="time-picker"][data-slot="早餐"][data-part="minute"]').click();await page.locator('[data-wheel="minute"]').hover();await page.mouse.wheel(0,88);await page.waitForTimeout(250);
+  ok(Number(await page.locator('[name="minute"]').inputValue())!==17,'真实滚动分钟滚轮');await click('cancel-picker');
+  ok((await page.locator('[data-slot="早餐"][data-part="minute"]').innerText()).includes('17'),'取消滚轮保留原值');
+  await page.locator('[data-action="time-picker"][data-slot="早餐"][data-part="hour"]').click();await field('hour','11');await page.getByRole('button',{name:'确认提醒时间',exact:true}).click();ok(await page.locator('[data-form="time-picker"]').count()===1,'早餐越界11点不能保存');await click('cancel-picker');
+  await page.locator('[name="duration"]').selectOption('截至某日期');await field('endDate','2026-09-12');await review();ok(await page.getByRole('alertdialog').count()===1,'结束日期越界提示');await click('dismiss-errors');await field('endDate','2026-09-15');await review();
+  const reviewText=await page.getByRole('dialog').innerText();ok(reviewText.includes('0.5 小包')&&reviewText.includes('09:17')&&reviewText.includes('餐前')&&reviewText.includes('餐后')&&reviewText.includes('2026-09-15'),'完整计划核对内容');await click('edit-med');ok(await page.locator('[name="name"]').inputValue()==='测试药 <安全>','返回修改保留草稿');await review();await page.locator('[data-action="save-med"]').evaluate(button=>{button.click();button.click();});
+  let saved=await state();const plan=saved.medicationPlans.find(p=>p.name==='测试药 <安全>');ok(plan&&plan.slots.length===2&&plan.doseUnit==='小包'&&plan.doseValue===0.5,'半片自定义单位保存');ok(saved.doseEvents.filter(e=>e.planId===plan.id).length===2,'新计划按两个时段生成任务');
+  ok(saved.medicationPlans.filter(p=>p.name==='测试药 <安全>').length===1 && saved.doseEvents.filter(e=>e.planId===plan.id).every(e=>e.status==='pending'&&e.changes.length===0),'重复确认只建一条计划且不自动声明服用');
+  ok(await page.locator('.plan-card').filter({hasText:'测试药 <安全>'}).locator('.meal-tag').count()===2,'用药信息显示各时段餐时');
+  await nav('home');const task=saved.doseEvents.find(e=>e.planId===plan.id&&e.slot==='早餐');await page.locator(`[data-action="take"][data-id="${task.id}"]`).click();await click('undo');await page.locator(`[data-action="declare"][data-id="${task.id}"]`).click();
+  await page.locator(`[data-action="correct-dose"][data-id="${task.id}"]`).click();await page.locator('[data-status="taken"][data-action="choose-correction"]').click();await click('confirm-dose');await page.reload();ok((await state()).doseEvents.find(e=>e.id===task.id).status==='taken','新表单后重走打卡撤销更正与刷新');
+  await clock('21:15');await click('home-add-health');await page.locator('[name="healthType"]').selectOption('身体指标');await field('height','160');await field('weight','60');await page.getByRole('button',{name:'核对测量记录',exact:true}).click();ok(await page.getByText('23.4',{exact:true}).count()===1,'BMI核对自动23.4');await click('save-health');await page.reload();ok(await page.getByText('23.4',{exact:true}).count()>=1,'BMI保存和历史显示');
+  await click('quick-add');await field('weight','61');await page.getByRole('button',{name:'核对测量记录',exact:true}).click();ok(await page.getByText(/身高来源：2026-09-13/).count()>0,'缺新身高时引用此前身高日期');await click('close-modal');
+  await click('quick-add');await field('height','0');await field('weight','60');await page.getByRole('button',{name:'核对测量记录',exact:true}).click();ok(await page.getByText(/身高和体重必须大于/).count()===1,'无效身高阻止计算');await click('close-modal');
+  await click('quick-add');await field('weight','60');await field('measuredAt','2026-09-01T08:00');await page.getByRole('button',{name:'核对测量记录',exact:true}).click();ok(await page.getByText('补充身高和体重后自动计算 BMI',{exact:true}).count()===1,'不使用未来身高计算历史BMI');await click('close-modal');
+  await nav('home');await click('home-add-health');await page.locator('[name="healthType"]').selectOption('血压');await field('systolic','125');await field('diastolic','75');await page.getByRole('button',{name:'核对测量记录',exact:true}).click();await click('save-health');await switchTo('child-li');
+  await click('profiles');await page.locator('[data-action="select-profile"][data-id="profile-zhang"]').click();const summary=await page.locator('.health-summary').innerText();ok(summary.includes('今天 · 2026-09-13')&&summary.includes('最近一次 · 2026-09-01'),'今日血压与旧血脂日期各自显示');
+  ok(await page.locator('[data-action="take"], [data-action="snooze"], [data-action="correct-dose"]').count()===0,'子女看板权限保持');
+  for(const width of [360,390,1280]) for(const font of ['normal','elder']) {
+    await page.setViewportSize({width,height:900});await nav('me');await page.locator(`[data-action="font"][data-value="${font}"]`).click();await nav('home');
+    ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`看板布局 ${width}/${font}`);await page.screenshot({path:`output/playwright/step-02/dashboard-${width}-${font}.png`,animations:'disabled',fullPage:true});
+    await click('home-add-med');await field('name','布局药');await field('doseValue','0.5');await field('doseUnit','包');await page.locator('[name="slots"][value="睡前"]').check();
+    ok(await page.evaluate(()=>{const e=document.querySelector('.slot-grid');return e.scrollWidth<=e.clientWidth+1}),`四列表无溢出 ${width}/${font}`);await page.locator('.slot-grid').scrollIntoViewIfNeeded();await page.screenshot({path:`output/playwright/step-02/form-${width}-${font}.png`,animations:'disabled'});
+    await page.locator('[data-slot="睡前"][data-action="time-picker"][data-part="minute"]').click();ok(await page.evaluate(()=>{const e=document.querySelector('.modal-sheet');return e.scrollWidth<=e.clientWidth+1}),`滚轮布局 ${width}/${font}`);await click('cancel-picker');await review();ok(await page.getByRole('button',{name:'确认创建',exact:true}).isVisible(),`核对按钮可见 ${width}/${font}`);await click('close-modal');
+  }
+  await switchTo('elder-zhang');await click('overdue');ok(await page.locator('.overdue-dot .icon').count()===0 && await page.locator('.overdue-dot').evaluate(el=>getComputedStyle(el).transform)==='none','红点不随折叠箭头旋转');
+  for(const width of [360,1280])for(const font of ['normal','elder']) {
+    await page.setViewportSize({width,height:900});await nav('me');await page.locator(`[data-action="font"][data-value="${font}"]`).click();await nav('home');
+    ok(await page.evaluate(()=>{const a=document.querySelector('.home-shortcuts').getBoundingClientRect(),b=document.querySelector('.summary-card').getBoundingClientRect();return b.top>=a.bottom+8 && document.documentElement.scrollWidth<=innerWidth}),`长辈双卡片与统计不重叠 ${width}/${font}`);
+    ok(await page.locator('.shortcut-card').evaluateAll(cards=>cards.every(c=>c.scrollWidth<=c.clientWidth&&c.getBoundingClientRect().height>=56&&c.innerText.includes('点击添加'))),`长辈卡片完整可点 ${width}/${font}`);
+    await page.screenshot({path:`output/playwright/step-02/elder-${width}-${font}.png`,animations:'disabled',fullPage:true});
+  }
+  ok(await page.locator('input[type="file"]').count()===0 && !(await page.locator('body').innerText()).includes('拍照识药'),'取消拍照入口');
+  ok(errors.length===0,`脚本错误 ${errors.length}`);return {passed:checks.length,checks,errors};
+}

@@ -1838,3 +1838,67 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; min-hei
 .audit-trail summary { cursor: pointer; min-height: 44px; }
 .sheet-content .med-card { margin: 0; }
 #app { width: 100%; }
+
+/* 首页与配置表：四列关系在大字号下保持，行高随内容增加。 */
+.home-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px var(--page-padding) 4px; }
+.home-shortcuts + .summary-card.overlap-card { margin-top: 16px; }
+.shortcut-card { display: grid; justify-items: start; align-content: start; gap: 10px; padding: 16px 12px; text-align: left; border: 1px solid #dce8e0; border-radius: 18px; background: #fff; min-height: 116px; }
+.shortcut-card > span { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #e4f2e8; color: #327a57; }
+.shortcut-card:nth-child(2) > span { background: #e9effa; color: #4a6f9c; }
+.shortcut-card strong { font-size: .88em; font-weight: 600; overflow-wrap: anywhere; }
+.module-link { margin: 10px var(--page-padding); }
+.section-title-row { flex-wrap: wrap; gap: 8px; }
+.calendar-card { margin: 0 var(--page-padding); padding: 18px 12px; border: 1px solid var(--line); border-radius: 20px; background: white; }
+.calendar-month { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-weight: 700; }
+.calendar-month span { color: var(--muted); font-size: .75em; font-weight: 400; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 6px 0; margin-top: 16px; }
+.weekday { padding: 6px 0; text-align: center; font-size: .75em; color: var(--muted); }
+.calendar-date { position: relative; display: grid; place-items: center; min-width: 0; min-height: 44px; border: 0; padding: 0; color: var(--ink); background: transparent; font-variant-numeric: tabular-nums; }
+.calendar-date .icon { position: absolute; width: 39px; height: 39px; fill: #ffdf76; stroke: #e9b735; stroke-width: 1; }
+.calendar-date span { position: relative; font-size: .88em; }
+.calendar-date.is-today::after { content: ''; position: absolute; bottom: 3px; height: 2px; width: 14px; background: var(--primary); }
+.calendar-date:disabled { opacity: .45; }
+.health-summary { margin: 0 var(--page-padding); padding: 0 16px; border: 1px solid var(--line); border-radius: 20px; background: #fff; }
+.health-summary article { padding: 16px 0; overflow-wrap: anywhere; }
+.health-summary article + article { border-top: 1px solid var(--line); }
+.summary-heading { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.summary-heading h3 { margin: 0; font-size: 1em; }
+.health-summary article > strong { display: block; margin-top: 10px; font-size: .95em; font-weight: 500; }
+.bmi-value { color: var(--ink); font-size: .9em; }
+.bmi-value strong { font-size: 1.3em; }
+.required-star { color: #6e7986; font-size: .9em; }
+.slot-grid { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.slot-head,.slot-line { display: grid; grid-template-columns: 26px minmax(0,1fr) 90px 66px; align-items: center; gap: 5px; padding: 12px 8px; }
+.slot-head { color: var(--muted); background: #f2f6f3; font-size: .7em; }
+.slot-line { border-top: 1px solid var(--line); }
+.slot-line.is-selected { background: #f8fcf9; }
+.slot-checkbox { display: flex; align-items: center; justify-content: center; min-height: 56px; cursor: pointer; }
+.slot-name { font-size: .86em; font-weight: 600; overflow-wrap: anywhere; }
+.slot-name small { display: block; margin-top: 4px; font-size: .78em; color: var(--muted); font-weight: 400; }
+.slot-time { position: relative; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 2px; }
+.slot-time > .required-star { position: absolute; top: -14px; right: 0; }
+.time-part { display: grid; justify-items: center; padding: 8px 2px; min-height: 48px; border: 1px solid #dce5df; border-radius: 8px; background: #fff; font-size: .88em; font-variant-numeric: tabular-nums; }
+.time-part span { color: var(--muted); font-size: .65em; }
+.meal-segment { display: grid; border: 1px solid #dce5df; border-radius: 9px; overflow: hidden; }
+.meal-segment button { min-height: 44px; padding: 6px 2px; font-size: .75em; background: #edf5ef; color: #345b43; border: 0; }
+.meal-segment button + button { border-top: 1px solid #dce5df; }
+.meal-segment button.is-selected { color: #fff; background: var(--primary); }
+.font-elder .time-part,.font-elder .meal-segment button { min-height: 56px; }
+.field-invalid > input,.field-invalid > select,.slot-fieldset.field-invalid > .slot-grid,.slot-time.field-invalid { border: 2px solid #bb4555; background: #fff6f6; }
+.field-invalid > label .required-star,.field-invalid > legend .required-star,.field-invalid > .required-star { color: #b53949; }
+.field-error { display: block; margin-top: 6px; color: #a13041; font-size: .8em; grid-column: 1 / -1; }
+.form-alert { position: absolute; top: 50%; left: 20px; right: 20px; transform: translateY(-50%); z-index: 5; padding: 24px; border: 2px solid #cc6871; border-radius: 20px; background: #fff7f7; box-shadow: 0 0 0 200vmax #17281f70; }
+.form-alert h3 { color: #923546; }
+.form-alert .button-primary { width: 100%; margin-top: 8px; }
+.time-wheels { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.wheel-column label { display: block; margin-bottom: 8px; }
+.wheel-column input { width: 100%; min-height: 48px; border: 1px solid var(--line); border-radius: 8px; text-align: center; }
+.wheel-list { height: 220px; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: thin; overscroll-behavior: contain; padding-block: 88px; margin-top: 12px; background: #f4f7f5; border-radius: 14px; }
+.wheel-list button { display: block; width: 100%; height: 44px; min-height: 44px; border: 0; background: transparent; color: var(--muted); scroll-snap-align: center; }
+.wheel-list button.is-selected { color: var(--primary-dark); background: #dfeee4; font-weight: 700; }
+.picker-preview { text-align: center; font-size: 1.5em; font-variant-numeric: tabular-nums; }
+.target-caption .text-button { margin-left: 12px; }
+@media (max-width: 380px) {
+  .slot-head,.slot-line { grid-template-columns: 22px minmax(0,1fr) 86px 60px; gap: 4px; padding: 10px 5px; }
+  .slot-name small { overflow-wrap: normal; word-break: normal; }
+}

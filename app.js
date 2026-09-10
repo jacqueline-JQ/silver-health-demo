@@ -63,8 +63,6 @@
   let undo = null;
   let undoTimer;
   let toastTimer;
-  let photoUrl = null;
-  let recognitionTimer;
   let overdueOpen = false;
 
   const account = () => data.accounts.find(a => a.id === view.accountId);
@@ -110,7 +108,7 @@
   const safety = () => `<aside class="safety-note">${icon('shield')}<span>仅含演示数据，不提供医疗建议，不应用于真实用药决策。</span></aside>`;
 
   function topbar() {
-    return `<div class="topbar"><div class="brand-lockup"><span class="brand-mark">${icon('heartbeat')}</span>药安心</div><div class="header-tools">${button(icon('clock'), 'clock', 'header-icon-button', 'aria-label="调整演示时间" title="调整演示时间"')}${button(icon('users'), 'accounts', 'header-icon-button', 'aria-label="切换演示账号" title="切换演示账号"')}</div></div>`;
+    return `<div class="topbar"><div class="brand-lockup"><span class="brand-mark">${icon('heartbeat')}</span>药安心</div><div class="header-tools">${button(icon('clock'), 'history', 'header-icon-button', 'aria-label="查看打卡记录" title="查看打卡记录"')}${button(icon('users'), 'accounts', 'header-icon-button', 'aria-label="切换演示账号" title="切换演示账号"')}</div></div>`;
   }
 
   function profileSelector() {
@@ -161,12 +159,35 @@
     const late = events.filter(e => stateOf(e) === 'overdue').length;
     const pending = events.length - complete - late;
     if (account().role === 'child') {
-      return `<header class="hero">${topbar()}<div class="hero-copy"><p class="hero-greeting">${esc(account().name)}，晚上好</p><h1 class="hero-name">家人的今日记录</h1></div>${profileSelector()}</header><div class="family-summary-grid"><div class="metric-card complete"><strong>${complete}/${events.length}</strong><span>已记录 · 服用 ${taken}</span></div><div class="metric-card pending"><strong>${pending}</strong><span>待打卡</span></div><div class="metric-card overdue"><strong>${late}</strong><span>未按时记录</span></div></div>${overdueCard(events)}${section('全天用药日程', schedule(events))}${safety()}`;
+      return `<header class="hero">${topbar()}<div class="hero-copy"><p class="hero-greeting">${esc(account().name)}，您好 · ${today()}</p><h1 class="hero-name">首页看板</h1><p class="hero-subtitle">家人的记录，放在一起看</p></div>${profileSelector()}</header><div class="family-summary-grid"><div class="metric-card complete"><strong>${complete}/${events.length}</strong><span>已记录 · 服用 ${taken}</span></div><div class="metric-card pending"><strong>${pending}</strong><span>待记录</span></div><div class="metric-card overdue"><strong>${late}</strong><span>未按时打卡</span></div></div>${overdueCard(events)}${section('今日用药', events.length ? schedule(events) : empty('今天暂无用药打卡计划'), button(`${icon('plus')}添加药品`, 'home-add-med', 'text-button'))}<div class="module-link">${button('查看全部用药／打卡记录', 'history', 'text-button')}</div>${section('本月打卡日历', calendar())}${section('身体数据', healthSummary(), button('添加身体数据', 'home-add-health', 'text-button'))}${safety()}`;
     }
     const currentSlot = Object.keys(SLOTS).find(slot => { const start = { 早餐: 300, 午餐: 660, 晚餐: 960, 睡前: 1200 }[slot]; const end = { 早餐: 660, 午餐: 960, 晚餐: 1200, 睡前: 1440 }[slot]; return minutes(data.demoTime) >= start && minutes(data.demoTime) < end; }) || '凌晨（无固定时段）';
     const current = events.filter(e => e.slot === currentSlot && stateOf(e) !== 'overdue');
     const next = events.find(e => !resolved(e) && minutes(e.scheduledTime) > minutes(data.demoTime));
-    return `<header class="hero">${topbar()}<div class="hero-copy"><p class="hero-greeting">${today()} · 北京时间</p><h1 class="hero-name">${esc(p?.name || account().name)}，您好</h1><p class="hero-subtitle">今天，也照顾好自己</p></div></header><section class="card summary-card overlap-card"><div><h2>今天已记录 ${complete}/${events.length}</h2><p>已服用 ${taken} 次 · 本次无需服用 ${events.filter(e => e.status === 'skipped').length} 次</p><p>${R.dailyResult(data, p?.id, today()).star ? '★ 当天记录符合星星条件' : '有任务且全部已服用／本次无需服用时点星'}</p></div><div class="progress-ring" style="--progress:${events.length ? complete / events.length * 100 : 0}%" role="img" aria-label="今天已记录 ${complete} 次，共 ${events.length} 次"><span>${complete}/${events.length}</span></div></section>${overdueCard(data.doseEvents.filter(e => e.profileId === p?.id && !e.cancelledAt))}${section(`现在 · ${currentSlot}`, current.length ? `<div class="card-list">${current.map(medCard).join('')}</div>` : empty(`本时段没有待打卡药物${next ? `，下一次是${next.slot} ${next.scheduledTime}` : ''}`))}${section('今日其他记录', schedule(events.filter(e => e.slot !== currentSlot && stateOf(e) !== 'overdue'), false))}${safety()}`;
+    return `<header class="hero">${topbar()}<div class="hero-copy"><p class="hero-greeting">${today()} · 北京时间</p><h1 class="hero-name">${esc(p?.name || account().name)}，您好</h1><p class="hero-subtitle">今天，也照顾好自己</p></div></header><div class="home-shortcuts">${button(`<span>${icon('pill')}</span><strong>点击添加用药打卡</strong>`, 'home-add-med', 'shortcut-card')}${button(`<span>${icon('heartbeat')}</span><strong>点击添加身体数据</strong>`, 'home-add-health', 'shortcut-card')}</div><section class="card summary-card overlap-card"><div><h2>今天已记录 ${complete}/${events.length}</h2><p>已服用 ${taken} 次 · 本次无需服用 ${events.filter(e => e.status === 'skipped').length} 次</p><p>${R.dailyResult(data, p?.id, today()).star ? '★ 当天记录符合星星条件' : '有任务且全部已服用／本次无需服用时点星'}</p></div><div class="progress-ring" style="--progress:${events.length ? complete / events.length * 100 : 0}%" role="img" aria-label="今天已记录 ${complete} 次，共 ${events.length} 次"><span>${complete}/${events.length}</span></div></section>${overdueCard(data.doseEvents.filter(e => e.profileId === p?.id && !e.cancelledAt))}${section(`现在 · ${currentSlot}`, current.length ? `<div class="card-list">${current.map(medCard).join('')}</div>` : empty(`本时段没有待打卡药物${next ? `，下一次是${next.slot} ${next.scheduledTime}` : ''}`))}${section('今日其他记录', schedule(events.filter(e => e.slot !== currentSlot && stateOf(e) !== 'overdue'), false))}${safety()}`;
+  }
+
+  function calendar() {
+    const month = today().slice(0, 7);
+    const days = new Date(`${month}-01T00:00:00Z`);
+    const offset = (days.getUTCDay() + 6) % 7;
+    const count = new Date(Date.UTC(days.getUTCFullYear(), days.getUTCMonth() + 1, 0)).getUTCDate();
+    return `<div class="calendar-card"><div class="calendar-month">${Number(month.slice(0, 4))} 年 ${Number(month.slice(5))} 月 <span>今天 ${today().slice(8)} 日</span></div><div class="calendar-grid">${['一','二','三','四','五','六','日'].map(x=>`<span class="weekday">${x}</span>`).join('')}${'<span></span>'.repeat(offset)}${Array.from({length:count},(_,i)=>{const date=`${month}-${String(i+1).padStart(2,'0')}`;const star=R.dailyResult(data,profile()?.id,date).star;return button(`${star?icon('star'):''}<span>${i+1}</span>`, 'calendar-date', `calendar-date ${date===today()?'is-today':''} ${star?'has-star':''}`,`data-date="${date}" aria-label="${date}${star?'，记录完成':''}" ${date>today()?'disabled':''}`);}).join('')}</div><p class="helper-text">当天有任务，且每项均记录为已服用或本次无需服用时显示星星。</p></div>`;
+  }
+
+  function bmiFor(record) {
+    if (!record || record.type !== 'body' || !(record.values.weight > 0)) return null;
+    const height = record.values.height > 0 ? record : data.healthRecords.filter(r=>r.profileId===record.profileId && r.type==='body' && r.measuredAt<=record.measuredAt && r.values.height>0).sort((a,b)=>b.measuredAt.localeCompare(a.measuredAt))[0];
+    if (!height) return null;
+    const value = record.values.weight / ((height.values.height / 100) ** 2);
+    return Number.isFinite(value) ? { value, heightId: height.id, heightDate: height.measuredAt, height: height.values.height } : null;
+  }
+  function bmiLabel(record) {
+    const bmi=bmiFor(record);
+    return bmi ? `<p class="bmi-value">BMI · 自动计算 <strong>${bmi.value.toFixed(1)}</strong> kg/m²</p><p class="helper-text">身高来源：${esc(bmi.heightDate)} · ${bmi.height} cm</p>` : '<p class="helper-text">补充身高和体重后自动计算 BMI</p>';
+  }
+  function healthSummary() {
+    return `<div class="health-summary">${Object.entries(TYPES).map(([type, info])=>{const r=recordsFor(type)[0];return `<article><div class="summary-heading"><h3>${info.name}</h3>${button('查看详情','summary-health','text-button',`data-value="${type}"`)}</div>${r?`<strong>${esc(formatValues(r))}</strong><p class="helper-text">${r.measuredAt.slice(0,10)===today()?'今天':'最近一次'} · ${esc(r.measuredAt)} · ${esc(r.source)}</p>${type==='body'?bmiLabel(r):''}`:'<p class="helper-text">暂无记录</p>'}</article>`;}).join('')}</div>`;
   }
 
   function schedule(events, remind = true) {
@@ -181,7 +202,7 @@
       const result = R.dailyResult(data, profile()?.id, view.historyDate);
       return `${header('用药信息', `${esc(profile()?.name || '')} · 打卡记录`)}<div class="filter-tabs">${button('正在服用', 'plan-tab', 'filter-button', 'data-value="active"')}${button('已停用', 'plan-tab', 'filter-button', 'data-value="inactive"')}${button('打卡记录', 'plan-tab', 'filter-button is-active', 'data-value="history"')}</div><div class="history-date form-row"><label for="history-date">任务日期</label><input id="history-date" type="date" value="${esc(view.historyDate)}" max="${today()}"></div>${section(`${result.star ? '★ ' : ''}${view.historyDate} · 已记录 ${result.recorded}/${result.total}`, `<p class="history-caption">${view.historyDate < today() ? '历史星星依据当日结束前的记录；后续补记、更正单独留痕。' : '按本人声明记录；未记录不代表未服用。'}</p>${history.length ? `<div class="card-list">${history.map(medCard).join('')}</div>` : empty('这一天没有用药任务')}`)}${safety()}`;
     }
-    return `${header('用药信息', `${esc(profile()?.name || '')}的药物计划与打卡记录`)}<div class="filter-tabs" role="tablist" aria-label="用药信息分类">${[['active', '正在服用'], ['inactive', '已停用'], ['history', '打卡记录']].map(([key, label]) => button(label, 'plan-tab', `filter-button ${view.planTab === key ? 'is-active' : ''}`, `role="tab" aria-selected="${view.planTab === key}" data-value="${key}"`)).join('')}</div>${view.planTab === 'history' ? `<div class="history-date form-row"><label for="history-date">记录日期</label><input id="history-date" type="date" value="${esc(view.historyDate)}" max="${DAY}"></div>${section('已确认的记录', history.length ? `<div class="record-list">${history.map(e => `<article class="record-row"><div><strong>${esc(planFor(e).name)}</strong><span>${e.slot} ${e.scheduledTime} · ${esc(author(e))}</span></div><div class="record-right">${badge(e)}<span>${esc(e.recordedAt || '')}</span></div></article>`).join('')}</div>` : empty('这一天还没有已确认的打卡记录'))}` : section(view.planTab === 'inactive' ? '已停用的计划' : '药物计划', plans.length ? `<div class="card-list">${plans.map(p => `<article class="card plan-card"><span class="plan-pill-icon ${esc(p.color || 'blue')}">${icon('pill')}</span><div class="plan-info"><h3>${esc(p.name)}</h3><p>${esc(p.doseValue)} ${esc(p.doseUnit)}/次 · 每天 ${p.slots.length} 次</p><p>${p.slots.join('、')} · ${esc(p.source)}</p>${p.startDate > DAY ? `<p>将于 ${p.startDate} 开始</p>` : p.endDate && p.endDate < DAY ? `<p>已于 ${p.endDate} 到期</p>` : ''}</div>${button(icon('chevron'), 'plan-detail', 'plan-more', `data-id="${p.id}" aria-label="查看${esc(p.name)}" title="查看药物计划"`)}</article>`).join('')}</div>` : empty('暂无此类药物计划'))}${safety()}`;
+    return `${header('用药信息', `${esc(profile()?.name || '')}的药物计划与打卡记录`)}<div class="filter-tabs" role="tablist" aria-label="用药信息分类">${[['active', '正在服用'], ['inactive', '已停用'], ['history', '打卡记录']].map(([key, label]) => button(label, 'plan-tab', `filter-button ${view.planTab === key ? 'is-active' : ''}`, `role="tab" aria-selected="${view.planTab === key}" data-value="${key}"`)).join('')}</div>${view.planTab === 'history' ? `<div class="history-date form-row"><label for="history-date">记录日期</label><input id="history-date" type="date" value="${esc(view.historyDate)}" max="${DAY}"></div>${section('已确认的记录', history.length ? `<div class="record-list">${history.map(e => `<article class="record-row"><div><strong>${esc(planFor(e).name)}</strong><span>${e.slot} ${e.scheduledTime} · ${esc(author(e))}</span></div><div class="record-right">${badge(e)}<span>${esc(e.recordedAt || '')}</span></div></article>`).join('')}</div>` : empty('这一天还没有已确认的打卡记录'))}` : section(view.planTab === 'inactive' ? '已停用的计划' : '药物计划', plans.length ? `<div class="card-list">${plans.map(p => `<article class="card plan-card"><span class="plan-pill-icon ${esc(p.color || 'blue')}">${icon('pill')}</span><div class="plan-info"><h3>${esc(p.name)}</h3><p>${esc(p.doseValue)} ${esc(p.doseUnit)}/次 · 每天 ${p.slots.length} 次</p><p>${p.slots.map(slot => `${slot} ${esc(p.slotSettings[slot].time)}${p.slotSettings[slot].meal ? ` <span class="meal-tag">${esc(p.slotSettings[slot].meal)}</span>` : ''}`).join('<br>')}</p><p>${esc(p.source)}</p>${p.startDate > today() ? `<p>将于 ${p.startDate} 开始</p>` : p.endDate && p.endDate < today() ? `<p>已于 ${p.endDate} 到期</p>` : ''}</div>${button(icon('chevron'), 'plan-detail', 'plan-more', `data-id="${p.id}" aria-label="查看${esc(p.name)}" title="查看药物计划"`)}</article>`).join('')}</div>` : empty('暂无此类药物计划'))}${safety()}`;
   }
 
   function formatValues(record) {
@@ -203,7 +224,7 @@
   function healthPage() {
     const records = recordsFor();
     const latest = records[0];
-    return `${header('身体数据', `${esc(profile()?.name || '')}的原始测量记录`)}<div class="filter-tabs" role="tablist" aria-label="身体数据类型">${Object.entries(TYPES).map(([key, type]) => button(type.name, 'health-tab', `filter-button ${view.healthType === key ? 'is-active' : ''}`, `role="tab" aria-selected="${view.healthType === key}" data-value="${key}"`)).join('')}</div>${latest ? `<section class="latest-data-card"><div><h2>最近一次${TYPES[view.healthType].name}</h2>${view.healthType === 'blood_pressure' ? `<p class="latest-value">${latest.values.systolic}/${latest.values.diastolic} <small>mmHg</small></p>${latest.values.pulse != null ? `<p class="microcopy">脉搏 ${latest.values.pulse} 次/分</p>` : ''}` : `<div class="data-values">${TYPES[view.healthType].fields.filter(([key]) => latest.values[key] != null).map(([key, label, unit]) => `<div><span>${label}</span><strong>${latest.values[key]} <small>${unit}</small></strong></div>`).join('')}</div>`}<p class="latest-meta">${esc(latest.measuredAt)} · ${esc(author(latest))}</p></div><span class="pill pill-blue data-source-chip">${esc(latest.source)}</span></section>` : section('最近一次', empty('还没有记录'))}${view.healthType === 'blood_pressure' ? section('最近 7 次趋势', chart(records)) : ''}${section('历史记录', records.length ? `<div class="record-list">${records.map(r => `<article class="record-row"><div><strong>${esc(formatValues(r))}</strong><span>${esc(r.measuredAt)} · ${esc(r.source)} · ${esc(author(r))}</span>${r.type === 'blood_pressure' && r.values.pulse != null ? `<span>脉搏 ${r.values.pulse} 次/分</span>` : ''}${r.extras?.length ? `<span>${r.extras.map(e => `${esc(e.name)} ${esc(e.value)} ${esc(e.unit)}`).join(' · ')}</span>` : ''}${r.note ? `<span>${esc(r.note)}</span>` : ''}</div></article>`).join('')}</div>` : empty('暂无历史记录'))}<div class="device-import-card"><span class="device-icon-wrap">${icon('device')}</span><div><strong>模拟设备导入</strong><span>预设演示值 · 无设备连接</span></div>${button(`${icon('upload')}导入`, 'import', 'button-secondary button-small')}</div>${safety()}`;
+    return `${header('身体数据', `${esc(profile()?.name || '')}的原始测量记录`)}<div class="filter-tabs" role="tablist" aria-label="身体数据类型">${Object.entries(TYPES).map(([key, type]) => button(type.name, 'health-tab', `filter-button ${view.healthType === key ? 'is-active' : ''}`, `role="tab" aria-selected="${view.healthType === key}" data-value="${key}"`)).join('')}</div>${latest ? `<section class="latest-data-card"><div><h2>最近一次${TYPES[view.healthType].name}</h2>${view.healthType === 'blood_pressure' ? `<p class="latest-value">${latest.values.systolic}/${latest.values.diastolic} <small>mmHg</small></p>${latest.values.pulse != null ? `<p class="microcopy">脉搏 ${latest.values.pulse} 次/分</p>` : ''}` : `<div class="data-values">${TYPES[view.healthType].fields.filter(([key]) => latest.values[key] != null).map(([key, label, unit]) => `<div><span>${label}</span><strong>${latest.values[key]} <small>${unit}</small></strong></div>`).join('')}</div>`}${view.healthType === 'body' ? bmiLabel(latest) : ''}<p class="latest-meta">${esc(latest.measuredAt)} · ${esc(author(latest))}</p></div><span class="pill pill-blue data-source-chip">${esc(latest.source)}</span></section>` : section('最近一次', empty('还没有记录'))}${view.healthType === 'blood_pressure' ? section('最近 7 次趋势', chart(records)) : ''}${section('历史记录', records.length ? `<div class="record-list">${records.map(r => `<article class="record-row"><div><strong>${esc(formatValues(r))}</strong><span>${esc(r.measuredAt)} · ${esc(r.source)} · ${esc(author(r))}</span>${r.type === 'blood_pressure' && r.values.pulse != null ? `<span>脉搏 ${r.values.pulse} 次/分</span>` : ''}${r.extras?.length ? `<span>${r.extras.map(e => `${esc(e.name)} ${esc(e.value)} ${esc(e.unit)}`).join(' · ')}</span>` : ''}${r.note ? `<span>${esc(r.note)}</span>` : ''}${r.type === 'body' ? bmiLabel(r) : ''}</div></article>`).join('')}</div>` : empty('暂无历史记录'))}<div class="device-import-card"><span class="device-icon-wrap">${icon('device')}</span><div><strong>模拟设备导入</strong><span>预设演示值 · 无设备连接</span></div>${button(`${icon('upload')}导入`, 'import', 'button-secondary button-small')}</div>${safety()}`;
   }
 
   function accountOptions() {
@@ -218,7 +239,7 @@
   function render() {
     const scroll = document.querySelector('.app-main')?.scrollTop || 0;
     const pages = { home: homePage, plans: plansPage, health: healthPage, me: mePage };
-    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>本地演示 · ${today()} ${data.demoTime}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${view.page !== 'me' ? button(icon('plus'), 'quick-add', 'fab', 'aria-label="快速添加" title="快速添加"') : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
+    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>本地演示 · ${today()} ${data.demoTime}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${['plans', 'health'].includes(view.page) ? button(icon('plus'), 'quick-add', 'fab', `aria-label="${view.page === 'plans' ? '添加药品打卡计划' : '添加身体数据'}"`) : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', account().role === 'child' ? '首页看板' : '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
     document.querySelector('.app-main').scrollTop = scroll;
     renderModal();
     rememberView();
@@ -252,15 +273,10 @@
     renderModal();
   }
 
-  function clearPhoto() {
-    clearTimeout(recognitionTimer);
-    if (photoUrl) URL.revokeObjectURL(photoUrl);
-    photoUrl = null;
-  }
-
   function closeModal(restore = true) {
+    if (restore && modal?.picker) { modal.picker = null; renderModal(); return; }
+    if (restore && modal?.errorLayer) { dismissErrors(); return; }
     modal = null;
-    clearPhoto();
     document.getElementById('modal-root')?.replaceChildren();
     document.getElementById('page-region')?.removeAttribute('inert');
     document.querySelector('.bottom-nav')?.removeAttribute('inert');
@@ -280,13 +296,31 @@
     const root = document.getElementById('modal-root');
     if (!root) return;
     if (!modal) { closeModal(false); return; }
-    const [title, content] = modalContent();
+    modal.scrollPositions ||= {};
+    if(root.dataset.contentKey) modal.scrollPositions[root.dataset.contentKey]=root.querySelector('.modal-sheet')?.scrollTop || 0;
+    const contentKey=modal.picker?'picker':modal.type;
+    root.dataset.contentKey=contentKey;
+    const [title, content] = modal.picker ? ['设置提醒时间', timePicker()] : modalContent();
     root.innerHTML = modalFrame(title, content);
     document.getElementById('page-region').setAttribute('inert', '');
     document.querySelector('.bottom-nav').setAttribute('inert', '');
     document.querySelector('.fab')?.setAttribute('inert', '');
     document.body.classList.add('modal-open');
     root.querySelector('.modal-sheet').focus({ preventScroll: true });
+    root.querySelector('.modal-sheet').scrollTop=modal.scrollPositions[contentKey] || 0;
+    if (modal.picker) {
+      root.querySelectorAll('[data-wheel]').forEach(wheel => {
+        const first = Number(wheel.dataset.first);
+        wheel.scrollTop = (Number(modal.picker[wheel.dataset.wheel]) - first) * 44;
+      });
+    }
+    if (modal.errors) paintErrors();
+    if (modal.errorLayer) {
+      root.querySelector('.sheet-content').setAttribute('inert', '');
+      root.querySelector('.modal-header').setAttribute('inert', '');
+      root.querySelector('.modal-sheet').insertAdjacentHTML('beforeend', `<div class="form-alert" role="alertdialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-description"><h3 id="error-title">还有必填信息未完成</h3><p id="error-description">还有必填信息未完成，请填写标红的框后再核对用药计划。</p>${button('去完善', 'dismiss-errors')}</div>`);
+      root.querySelector('[data-action="dismiss-errors"]').focus();
+    }
   }
 
   function targetOptions(action) {
@@ -308,8 +342,7 @@
     if (m.type === 'accounts') return ['切换演示账号', accountOptions()];
     if (m.type === 'profiles') return ['查看哪位长辈', targetOptions('select-profile')];
     if (m.type === 'target') return ['为哪位长辈添加', targetOptions('select-target')];
-    if (m.type === 'quick') return [`为${esc(targetName())}添加`, `<div class="quick-choices">${button(`<span class="quick-choice-icon">${icon('pill')}</span><strong>用药信息</strong>${icon('chevron')}`, 'add-med', 'quick-choice')}${button(`<span class="quick-choice-icon blue">${icon('heartbeat')}</span><strong>身体数据</strong>${icon('chevron')}`, 'add-health', 'quick-choice')}</div>`];
-    if (m.type === 'medicine') return ['添加用药信息', medicineForm()];
+    if (m.type === 'medicine') return ['添加药品打卡计划', medicineForm()];
     if (m.type === 'medicine-confirm') return ['确认用药计划', medicineReview()];
     if (m.type === 'health-form') return ['记录身体数据', healthForm()];
     if (m.type === 'health-confirm') return ['确认测量记录', healthReview()];
@@ -337,47 +370,120 @@
       const logs = data.notificationLogs.filter(n => canAccess(n.profileId)).slice().reverse();
       return ['模拟提醒记录', logs.length ? `<div class="record-list">${logs.map(n => `<article class="record-row"><div><strong>${esc(n.text)}</strong><span>${n.sentAt} · 本地模拟，未发送消息</span></div></article>`).join('')}</div>` : '<p>暂无模拟提醒记录</p>'];
     }
-    if (m.type === 'about') return ['演示与隐私说明', '<p>本版本仅用于复客松演示，不提供医疗建议，不应用于真实用药决策。</p><p>数据保存在此浏览器内，切换本地演示账号可查看同一份家庭记录。跨手机同步、微信登录、识药、推送、设备连接均未接入真实服务。</p><p>图片只用于本次本地预览，不上传，也不保留到存档中。请勿录入真实患者信息或处方。</p><p>本地角色限制用于演示产品分工，不是生产环境的安全访问控制；共享此浏览器的人可以切换账号查看演示数据。</p>'];
+    if (m.type === 'about') return ['演示与隐私说明', '<p>本版本仅用于复客松演示，不提供医疗建议，不用于真实用药决策。</p><p>数据保存在此浏览器内，切换本地演示账号可查看同一份家庭记录。跨手机同步、微信登录、推送、设备连接均未接入真实服务。请勿录入真实患者信息或处方。</p><p>本地角色限制用于演示产品分工，不是生产环境的安全访问控制；共享此浏览器的人可以切换账号查看演示数据。</p>'];
     if (m.type === 'reset') return ['恢复初始演示数据？', '<p>将清除本原型中新增的账号、计划、打卡和身体数据，恢复张阿姨和小李的初始样例。其他网站的数据不受影响。</p><div class="form-footer">' + button('取消', 'close-modal', 'button-secondary') + button('确认恢复', 'confirm-reset', 'button-danger') + '</div>'];
     return ['提示', '<p>无法打开此内容。</p>'];
   }
 
   // 表单保留草稿，只有预览页的确认操作会写入共享数据。
   function newMedicine(targetId) {
-    openModal('medicine', { targetId, mode: 'manual', draft: { name: '', doseValue: '', doseUnit: '片', customUnit: '', slots: [], slotSettings: Object.fromEntries(Object.entries(SLOTS).map(([slot, time]) => [slot, { time, meal: '' }])), startDate: today(), duration: '长期服用', endDate: '', note: '' } });
+    openModal('medicine', { targetId, mode: 'manual', draft: { name: '', doseValue: '', doseUnit: '', slots: [], slotSettings: Object.fromEntries(Object.entries(SLOTS).map(([slot, time]) => [slot, { time, meal: '' }])), startDate: today(), duration: '长期服用', endDate: '', note: '', assisted: account().role === 'child' } });
   }
 
   function medicineForm() {
     const d = modal.draft;
-    return `<p class="target-caption">记录对象：<strong>${esc(targetName())}</strong></p><div class="mode-tabs" role="tablist" aria-label="药物录入方式">${[['manual', '手动输入'], ['photo', '模拟拍照识药']].map(([key, label]) => button(label, 'med-mode', `mode-tab ${modal.mode === key ? 'is-active' : ''}`, `role="tab" aria-selected="${modal.mode === key}" data-value="${key}"`)).join('')}</div>${modal.mode === 'photo' ? `<div class="photo-zone">${photoUrl ? `<img class="photo-preview" src="${photoUrl}" alt="本地选择的药盒图片">` : `<div class="photo-preview photo-placeholder" aria-hidden="true">${icon('pill')}</div>`}<label class="button-secondary button-wide photo-label" for="medicine-photo">${icon('camera')}选择药盒图片</label><input id="medicine-photo" type="file" accept="image/jpeg,image/png,image/webp" class="fake-file-input">${button('使用演示样例', 'sample-photo', 'text-button')}${modal.recognizing ? '<p role="status">正在生成模拟草稿…</p>' : ''}${modal.recognized ? '<p class="recognition-result-header">模拟草稿已生成，未识别图片内容</p>' : ''}</div><div class="confirm-banner">${icon('info')}识别结果仅用于辅助填写，请按实际处方逐项确认；本产品不提供用药建议。</div>` : ''}<form data-form="medicine">${input('name', '药品名称', d.name, 'text', 'required maxlength="80" autocomplete="off"')}${input('doseValue', '单次用量', d.doseValue, 'number', 'required min="0.01" step="any" inputmode="decimal"')}${select('doseUnit', '用量单位', ['片', '粒', '袋', '支', '毫升', '滴', '喷', '瓶', '其他'], d.doseUnit)}${d.doseUnit === '其他' ? input('customUnit', '自定义单位', d.customUnit, 'text', 'required maxlength="12"') : ''}<fieldset class="slot-fieldset"><legend>服用时段（至少一项）</legend><div class="slot-options">${Object.keys(SLOTS).map(slot => `<label class="slot-option ${d.slots.includes(slot) ? 'is-checked' : ''}"><input type="checkbox" name="slots" value="${slot}" ${d.slots.includes(slot) ? 'checked' : ''}><span>${slot} ${SLOTS[slot]}</span></label>`).join('')}</div><p id="frequency" class="helper-text">每天 ${d.slots.length} 次，各时段单次用量相同</p></fieldset>${input('startDate', '开始日期', d.startDate, 'date', 'required')}${select('duration', '服用周期', ['长期服用', '截至某日期'], d.duration)}${d.duration === '截至某日期' ? input('endDate', '结束日期', d.endDate, 'date', 'required') : ''}${input('note', '服用备注（选填）', d.note, 'text', 'maxlength="240"')}${errorBox()}<div class="form-footer">${submit('核对用药计划')}</div></form>`;
+    return `${targetCaption()}<div class="mode-tabs" role="tablist" aria-label="药物录入方式">${button('手动输入','med-mode','mode-tab is-active','role="tab" aria-selected="true" data-value="manual"')}${button('AI语音输入','med-mode','mode-tab','role="tab" aria-selected="false" data-value="voice" disabled title="第4步接入"')}</div><form data-form="medicine" novalidate>${medicineFields(d)}${errorBox()}<div class="form-footer">${submit('核对用药计划')}</div></form>`;
+  }
+
+  const required = label => `${label} <span class="required-star" aria-hidden="true">*</span>`;
+  function targetCaption() {
+    return `<p class="target-caption">记录对象：<strong>${esc(targetName())}</strong>${account().role==='child'&&!modal.planId?button('改选','change-target','text-button'):''}</p>`;
+  }
+  function medicineFields(d) {
+    return `${input('name',required('药品名称'),d.name,'text','required maxlength="80" autocomplete="off"')}${input('doseValue',required('单次用量（请输入数字）'),d.doseValue,'number','required min="0.000001" step="any" inputmode="decimal"')}${input('doseUnit',required('用量单位'),d.doseUnit,'text','required maxlength="12" list="dose-units"')}<datalist id="dose-units">${['片','粒','包','袋','支','毫升','滴','喷','瓶'].map(u=>`<option value="${u}">`).join('')}</datalist>${slotFields(d)}${input('startDate',required('开始日期'),d.startDate,'date','required')}${select('duration',required('服用周期'),['长期服用','截至某日期'],d.duration)}${d.duration==='截至某日期'?input('endDate',required('结束日期'),d.endDate,'date','required'):''}${input('note','服用备注（选填）',d.note,'text','maxlength="240"')}<label class="consent-row"><input name="assisted" type="checkbox" ${d.assisted?'checked':''}><span>本次由家属协助录入</span></label>`;
+  }
+  function slotFields(d) {
+    return `<fieldset class="slot-fieldset" data-field="slots"><legend>${required('服用时段')}</legend><div class="slot-grid"><div class="slot-head"><span>选择</span><span>时段</span><span>提醒推送</span><span>餐时（选填）</span></div>${Object.entries(SLOTS).map(([slot,time])=>{const selected=d.slots.includes(slot);const setting=d.slotSettings[slot]||{time,meal:''};return `<div class="slot-line ${selected?'is-selected':''}"><label class="slot-checkbox"><input type="checkbox" name="slots" value="${slot}" aria-label="选择${slot}" ${selected?'checked':''}></label><span class="slot-name">${slot}<small>${{早餐:'05:00–11:00',午餐:'11:00–16:00',晚餐:'16:00–20:00',睡前:'20:00–24:00'}[slot]}</small></span><div class="slot-time" data-field="time-${slot}">${button(`${setting.time.slice(0,2)}<span>时</span>`,'time-picker','time-part',`data-slot="${slot}" data-part="hour" aria-label="${slot}提醒小时"`)}${button(`${setting.time.slice(3)}<span>分</span>`,'time-picker','time-part',`data-slot="${slot}" data-part="minute" aria-label="${slot}提醒分钟"`)}<span class="required-star" aria-hidden="true">${selected?'*':''}</span></div><div class="meal-segment" role="group" aria-label="${slot}餐时">${['餐前','餐后'].map(meal=>button(meal,'meal',setting.meal===meal?'is-selected':'',`data-slot="${slot}" data-meal="${meal}" aria-pressed="${setting.meal===meal}" ${selected?'':'disabled'}`)).join('')}</div></div>`;}).join('')}</div><p id="frequency" class="helper-text">每天 ${d.slots.length} 次，各时段单次用量相同</p></fieldset>`;
+  }
+  function timePicker() {
+    const p=modal.picker; const [start,end]=R.RANGES[p.slot];
+    const wheel=(field,first,last,label)=>`<div class="wheel-column"><label for="picker-${field}">${label}</label><input id="picker-${field}" name="${field}" type="number" min="${first}" max="${last}" step="1" value="${p[field]}" required aria-label="输入${label}"><div class="wheel-list" data-wheel="${field}" data-first="${first}" role="group" aria-label="${label}滚轮">${Array.from({length:last-first+1},(_,i)=>{const n=i+first;return button(String(n).padStart(2,'0'),'wheel-value',n===p[field]?'is-selected':'',`data-part="${field}" data-number="${n}" aria-label="${n}${label}"`)}).join('')}</div></div>`;
+    return `<p>${p.slot}：${String(Math.floor(start/60)).padStart(2,'0')}:00–${String(Math.floor((end-1)/60)).padStart(2,'0')}:59</p><p class="helper-text">上下滑动时、分滚轮；也可直接输入数字。取消保留原时间。</p><form data-form="time-picker"><div class="time-wheels">${wheel('hour',Math.floor(start/60),Math.floor((end-1)/60),'小时')}${wheel('minute',0,59,'分钟')}</div><p class="picker-preview" aria-live="polite">${String(p.hour).padStart(2,'0')}:${String(p.minute).padStart(2,'0')}</p>${errorBox()}<div class="form-footer">${button('取消','cancel-picker','button-secondary')}${submit('确认提醒时间')}</div></form>`;
+  }
+
+  function paintErrors() {
+    app.querySelectorAll('[aria-invalid]').forEach(el=>{el.removeAttribute('aria-invalid');el.removeAttribute('aria-describedby');});
+    app.querySelectorAll('.field-invalid').forEach(el=>{el.classList.remove('field-invalid');});
+    app.querySelectorAll('.field-error').forEach(el=>{el.remove();});
+    for (const [key,message] of Object.entries(modal?.errors || {})) {
+      const field=document.getElementById(`field-${key}`) || [...app.querySelectorAll('[data-field]')].find(el=>el.dataset.field===key);
+      if (!field) continue;
+      const row=field.closest('.form-row') || field;
+      field.setAttribute('aria-invalid','true');row.classList.add('field-invalid');
+      const note=document.createElement('small'); note.className='field-error';note.id=`error-${key}`;note.textContent=message; row.append(note); field.setAttribute('aria-describedby',note.id);
+    }
+  }
+  function reconcileMedicineErrors() {
+    if(!modal?.errors || !modal.draft)return;
+    const current=R.planErrors(modal.draft);
+    for(const key of Object.keys(modal.errors))if(!current[key])delete modal.errors[key];
+  }
+  function dismissErrors() {
+    modal.errorLayer=false;renderModal();
+    const field=app.querySelector('[aria-invalid="true"]');
+    const focus=field?.matches('input,select,button')?field:field?.querySelector('input,button');
+    focus?.scrollIntoView({block:'center'});focus?.focus({preventScroll:true});
   }
 
   function collectMedicine(form) {
     const fd = new FormData(form);
-    return { ...modal.draft, name: String(fd.get('name') || '').trim(), doseValue: fd.get('doseValue'), doseUnit: fd.get('doseUnit'), customUnit: String(fd.get('customUnit') || '').trim(), slots: fd.getAll('slots'), startDate: fd.get('startDate'), duration: fd.get('duration'), endDate: fd.get('endDate') || '', note: String(fd.get('note') || '').trim() };
+    return { ...modal.draft, name: String(fd.get('name') || '').trim(), doseValue: fd.get('doseValue'), doseUnit: String(fd.get('doseUnit') || '').trim(), slots: fd.getAll('slots'), startDate: fd.get('startDate'), duration: fd.get('duration'), endDate: fd.get('endDate') || '', note: String(fd.get('note') || '').trim(), assisted: fd.has('assisted') };
   }
 
   function medicineReview() {
     const d = modal.draft;
     const applicable = d.slots.filter(slot => minutes(data.demoTime) < { 早餐: 660, 午餐: 960, 晚餐: 1200, 睡前: 1440 }[slot]);
-    return `<dl class="review-list"><dt>记录对象</dt><dd>${esc(targetName())}</dd><dt>药品名称</dt><dd>${esc(d.name)}</dd><dt>计划单次量</dt><dd>${esc(d.doseValue)} ${esc(d.doseUnit === '其他' ? d.customUnit : d.doseUnit)}</dd><dt>每天次数</dt><dd>${d.slots.length} 次</dd><dt>服用时段</dt><dd>${d.slots.map(slot => `${slot} · 提醒 ${d.slotSettings[slot].time} ${esc(d.slotSettings[slot].meal || '')}`).join('<br>')}</dd><dt>开始日期</dt><dd>${d.startDate}</dd><dt>服用周期</dt><dd>${d.duration === '长期服用' ? d.duration : `截至 ${d.endDate}`}</dd><dt>备注</dt><dd>${esc(d.note || '无')}</dd></dl><div class="confirm-banner">${icon('shield')}<span>请按已有安排核对。${modal.planId ? '编辑仅影响未开始时段，已开始任务保留原快照。' : d.startDate > today() ? '从所选未来日期生效，不生成今天任务。' : `今天适用：${applicable.join('、') || '无'}；不追造已结束时段。当前时段提醒点已过，保存后可提醒一次。`}</span></div><div class="form-footer">${button(`${icon('back')}返回修改`, 'edit-med', 'button-secondary')}${button(modal.planId ? '确认修改' : '确认创建', 'save-med')}</div>`;
+    return `<dl class="review-list"><dt>记录对象</dt><dd>${esc(targetName())}</dd><dt>药品名称</dt><dd>${esc(d.name)}</dd><dt>计划单次量</dt><dd>${esc(d.doseValue)} ${esc(d.doseUnit)}</dd><dt>每天次数</dt><dd>${d.slots.length} 次</dd><dt>服用时段</dt><dd>${d.slots.map(slot => `${slot}（${{早餐:'05:00–11:00',午餐:'11:00–16:00',晚餐:'16:00–20:00',睡前:'20:00–24:00'}[slot]}）<br>提醒 ${d.slotSettings[slot].time} ${esc(d.slotSettings[slot].meal || '')}`).join('<br>')}</dd><dt>录入来源</dt><dd>${esc(d.source || '手动输入')}${d.assisted?' · 家属协助':''}</dd><dt>开始日期</dt><dd>${d.startDate}</dd><dt>服用周期</dt><dd>${d.duration === '长期服用' ? d.duration : `截至 ${d.endDate}`}</dd><dt>备注</dt><dd>${esc(d.note || '无')}</dd></dl><div class="confirm-banner">${icon('shield')}<span>请按已有安排核对。${modal.planId ? '编辑仅影响未开始时段，已开始任务保留原快照。' : d.startDate > today() ? '从所选未来日期生效，不生成今天任务。' : `今天适用：${applicable.join('、') || '无'}；不追造已结束时段。当前时段提醒点已过，保存后可提醒一次。`}</span></div><div class="form-footer">${button(`${icon('back')}返回修改`, 'edit-med', 'button-secondary')}${button(modal.planId ? '确认修改' : '确认创建', 'save-med')}</div>`;
   }
 
   function healthForm() {
     const d = modal.draft;
-    return `<p class="target-caption">记录对象：<strong>${esc(targetName())}</strong></p><form data-form="health">${select('healthType', '数据类型', Object.values(TYPES).map(t => t.name), TYPES[modal.healthType].name)}<div class="kv-list">${TYPES[modal.healthType].fields.map(([key, label, unit], i) => `<div class="form-row"><label for="value-${key}">${label}${modal.healthType === 'blood_pressure' && i < 2 ? '' : '（选填）'}</label><div class="value-input"><input id="value-${key}" name="${key}" type="number" inputmode="decimal" min="0" step="any" value="${esc(d.values[key] ?? '')}" ${modal.healthType === 'blood_pressure' && i < 2 ? 'required' : ''}><span>${unit}</span></div></div>`).join('')}</div>${modal.healthType !== 'blood_pressure' ? `<div id="extra-fields">${d.extras.map((e, i) => `<div class="extra-field">${input(`extraName${i}`, '报告指标名称', e.name, 'text', 'required maxlength="40"')}${input(`extraValue${i}`, '数值', e.value, 'number', 'required min="0" step="any"')}${input(`extraUnit${i}`, '单位（与报告一致）', e.unit, 'text', 'required maxlength="16"')}${button(icon('close'), 'remove-extra', 'close-button', `data-index="${i}" aria-label="移除此指标" title="移除此指标"`)}</div>`).join('')}</div>${button(`${icon('plus')}添加一项指标`, 'add-extra', 'add-kv-button')}` : ''}${input('measuredAt', '测量时间', d.measuredAt, 'datetime-local', 'required')}${input('note', '备注（选填）', d.note, 'text', 'maxlength="240"')}${errorBox()}<div class="form-footer">${submit('核对测量记录')}</div></form>`;
+    return `${targetCaption()}<form data-form="health">${select('healthType', '数据类型', Object.values(TYPES).map(t => t.name), TYPES[modal.healthType].name)}<div class="kv-list">${TYPES[modal.healthType].fields.map(([key, label, unit], i) => `<div class="form-row"><label for="value-${key}">${label}${modal.healthType === 'blood_pressure' && i < 2 ? '' : '（选填）'}</label><div class="value-input"><input id="value-${key}" name="${key}" type="number" inputmode="decimal" min="0" step="any" value="${esc(d.values[key] ?? '')}" ${modal.healthType === 'blood_pressure' && i < 2 ? 'required' : ''}><span>${unit}</span></div></div>`).join('')}</div>${modal.healthType !== 'blood_pressure' ? `<div id="extra-fields">${d.extras.map((e, i) => `<div class="extra-field">${input(`extraName${i}`, '报告指标名称', e.name, 'text', 'required maxlength="40"')}${input(`extraValue${i}`, '数值', e.value, 'number', 'required min="0" step="any"')}${input(`extraUnit${i}`, '单位（与报告一致）', e.unit, 'text', 'required maxlength="16"')}${button(icon('close'), 'remove-extra', 'close-button', `data-index="${i}" aria-label="移除此指标" title="移除此指标"`)}</div>`).join('')}</div>${button(`${icon('plus')}添加一项指标`, 'add-extra', 'add-kv-button')}` : ''}${input('measuredAt', required('测量时间'), d.measuredAt, 'datetime-local', 'required')}${input('note', '备注（选填）', d.note, 'text', 'maxlength="240"')}<label class="consent-row"><input name="assisted" type="checkbox" ${d.assisted?'checked':''}><span>本次由家属协助录入</span></label>${errorBox()}<div class="form-footer">${submit('核对测量记录')}</div></form>`;
   }
+
+  function newHealth(targetId, type=view.healthType) {
+    openModal('health-form',{targetId,healthType:type,draft:{values:{},extras:[],measuredAt:`${today()}T${data.demoTime}`,note:'',assisted:account().role==='child'}});
+  }
+  function updatePicker() {
+    const p=modal?.picker;if(!p)return;
+    for(const part of ['hour','minute']) {
+      const input=app.querySelector(`#picker-${part}`);if(input)input.value=p[part];
+      app.querySelectorAll(`[data-part="${part}"][data-number]`).forEach(b=>{b.classList.toggle('is-selected',Number(b.dataset.number)===p[part]);});
+    }
+    const preview=app.querySelector('.picker-preview');if(preview)preview.textContent=`${String(p.hour).padStart(2,'0')}:${String(p.minute).padStart(2,'0')}`;
+  }
+  for(const type of ['wheel','pointerdown','touchstart'])app.addEventListener(type,event=>{
+    const wheel=event.target.closest?.('[data-wheel]');if(wheel)wheel.dataset.userScrolling='true';
+  },{passive:true});
+  app.addEventListener('scroll',event=>{
+    const wheel=event.target;if(!modal?.picker || !wheel.dataset?.wheel || wheel.dataset.userScrolling!=='true')return;
+    const part=wheel.dataset.wheel;modal.picker[part]=Number(wheel.dataset.first)+Math.round(wheel.scrollTop/44);updatePicker();
+  },true);
+  app.addEventListener('input',event=>{
+    const field=event.target;
+    if(modal?.picker && ['hour','minute'].includes(field.name)) {
+      modal.picker[field.name]=Number(field.value);
+      const wheel=app.querySelector(`[data-wheel="${field.name}"]`);wheel.dataset.userScrolling='false';
+      if(field.validity.valid)wheel.scrollTop=(Number(field.value)-Number(wheel.dataset.first))*44;
+      return;
+    }
+    if(modal?.type==='medicine' && field.closest('[data-form="medicine"]')) {
+      modal.draft=collectMedicine(field.closest('form'));
+      if(modal.errors) { reconcileMedicineErrors();paintErrors(); }
+    }
+    if(modal?.type==='health-form' && field.closest('[data-form="health"]') && field.name!=='healthType') modal.draft=collectHealth(field.closest('form'));
+  });
 
   function collectHealth(form) {
     const fd = new FormData(form);
     const values = {};
     TYPES[modal.healthType].fields.forEach(([key]) => { if (fd.get(key) !== '') values[key] = fd.get(key); });
-    return { values, measuredAt: fd.get('measuredAt'), note: String(fd.get('note') || '').trim(), extras: modal.draft.extras.map((_, i) => ({ name: String(fd.get(`extraName${i}`) || '').trim(), value: fd.get(`extraValue${i}`), unit: String(fd.get(`extraUnit${i}`) || '').trim() })) };
+    return { values, measuredAt: fd.get('measuredAt'), note: String(fd.get('note') || '').trim(), assisted: fd.has('assisted'), extras: modal.draft.extras.map((_, i) => ({ name: String(fd.get(`extraName${i}`) || '').trim(), value: fd.get(`extraValue${i}`), unit: String(fd.get(`extraUnit${i}`) || '').trim() })) };
   }
 
   function healthReview() {
     const d = modal.draft;
-    return `<dl class="review-list"><dt>记录对象</dt><dd>${esc(targetName())}</dd><dt>数据类型</dt><dd>${TYPES[modal.healthType].name}</dd>${TYPES[modal.healthType].fields.filter(([key]) => d.values[key] != null).map(([key, label, unit]) => `<dt>${label}</dt><dd>${esc(d.values[key])} ${unit}</dd>`).join('')}${d.extras.map(e => `<dt>${esc(e.name)}</dt><dd>${esc(e.value)} ${esc(e.unit)}</dd>`).join('')}<dt>测量时间</dt><dd>${esc(d.measuredAt.replace('T', ' '))}</dd><dt>备注</dt><dd>${esc(d.note || '无')}</dd></dl><div class="form-footer">${button(`${icon('back')}返回修改`, 'edit-health', 'button-secondary')}${button('确认保存', 'save-health')}</div>`;
+    return `<dl class="review-list"><dt>记录对象</dt><dd>${esc(targetName())}</dd><dt>数据类型</dt><dd>${TYPES[modal.healthType].name}</dd>${TYPES[modal.healthType].fields.filter(([key]) => d.values[key] != null).map(([key, label, unit]) => `<dt>${label}</dt><dd>${esc(d.values[key])} ${unit}</dd>`).join('')}${d.extras.map(e => `<dt>${esc(e.name)}</dt><dd>${esc(e.value)} ${esc(e.unit)}</dd>`).join('')}<dt>测量时间</dt><dd>${esc(d.measuredAt.replace('T', ' '))}</dd><dt>备注</dt><dd>${esc(d.note || '无')}</dd><dt>来源</dt><dd>${esc(d.source || '手动输入')}${d.assisted?' · 家属协助':''}</dd></dl>${modal.healthType==='body'?bmiLabel({type:'body',profileId:modal.targetId,values:d.values,measuredAt:d.measuredAt.replace('T',' ')}):''}<div class="form-footer">${button(`${icon('back')}返回修改`, 'edit-health', 'button-secondary')}${button('确认保存', 'save-health')}</div>`;
   }
 
   function onboardingForm() {
@@ -409,27 +515,6 @@
     return true;
   }
 
-  function simulatePhoto(file) {
-    if (!modal || modal.type !== 'medicine' || modal.mode !== 'photo') return;
-    const form = document.querySelector('[data-form="medicine"]');
-    if (form) modal.draft = collectMedicine(form);
-    if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)) { toast('请选择 5 MB 以内的 JPG、PNG 或 WebP 图片。', 'warning'); return; }
-    clearPhoto();
-    if (file) photoUrl = URL.createObjectURL(file);
-    const current = modal;
-    current.recognizing = true;
-    current.recognized = false;
-    renderModal();
-    recognitionTimer = setTimeout(() => {
-      if (modal !== current) return;
-      current.recognizing = false;
-      current.recognized = true;
-      // 固定样例只带入演示名称，剂量与时段留给人填写，避免伪装处方建议。
-      current.draft.name = '演示药品 A（模拟识别）';
-      renderModal();
-    }, 750);
-  }
-
   function saveOnboarding() {
     const d = modal.draft;
     const accountId = id('account');
@@ -458,8 +543,15 @@
     const form = event.target;
     if (!form.dataset.form) return;
     event.preventDefault();
-    if (!form.reportValidity()) return;
+    if (form.dataset.form !== 'medicine' && !form.reportValidity()) return;
     const fd = new FormData(form);
+    if (form.dataset.form === 'time-picker' && modal?.picker) {
+      const hour=Number(fd.get('hour')),minute=Number(fd.get('minute'));
+      const time=`${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
+      const [start,end]=R.RANGES[modal.picker.slot];
+      if (!Number.isInteger(hour)||!Number.isInteger(minute)||!R.validTime(time)||R.minute(time)<start||R.minute(time)>=end) return formError('提醒时间必须在当前自然时段内。');
+      modal.draft.slotSettings[modal.picker.slot].time=time;modal.picker=null;reconcileMedicineErrors();renderModal();return;
+    }
     if (form.dataset.form === 'clock') {
       const time = fd.get('time');
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return formError('请输入有效时间。');
@@ -469,17 +561,15 @@
     if (form.dataset.form === 'medicine') {
       const draft = collectMedicine(form);
       modal.draft = draft;
-      if (!draft.name || !(Number(draft.doseValue) > 0) || !Number.isFinite(Number(draft.doseValue))) return formError('请输入药品名称和大于 0 的单次用量。');
-      if (draft.doseUnit === '其他' && !draft.customUnit) return formError('请填写自定义单位。');
-      if (!draft.slots.length) return formError('请至少选择一个服用时段。');
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.startDate)) return formError('请选择有效的开始日期。');
-      if (draft.duration === '截至某日期' && (!draft.endDate || draft.endDate < draft.startDate)) return formError('结束日期不能早于开始日期。');
+      modal.errors=R.planErrors(draft);
+      if (Object.keys(modal.errors).length) { modal.errorLayer=true;renderModal();return; }
       modal.type = 'medicine-confirm'; renderModal(); return;
     }
     if (form.dataset.form === 'health') {
       const draft = collectHealth(form);
       if (!Object.keys(draft.values).length && !draft.extras.length) return formError('请至少填写一项测量值。');
       if ([...Object.values(draft.values), ...draft.extras.map(e => e.value)].some(v => v === '' || !Number.isFinite(Number(v)) || Number(v) < 0)) return formError('测量值必须是非负数字。');
+      if (modal.healthType==='body' && ['height','weight'].some(k=>draft.values[k]!=null && !(Number(draft.values[k])>0))) return formError('身高和体重必须大于 0，并按标注单位填写。');
       if (modal.healthType === 'blood_pressure' && !(Number(draft.values.systolic) > Number(draft.values.diastolic))) return formError('请核对：收缩压需要大于舒张压。');
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(draft.measuredAt) || draft.measuredAt > `${today()}T${data.demoTime}`) return formError('测量时间不能晚于当前演示时间。');
       if (draft.extras.some(e => !e.name || !e.unit)) return formError('请填写附加指标的名称和单位。');
@@ -507,15 +597,15 @@
   app.addEventListener('change', event => {
     const field = event.target;
     if (field.id === 'history-date' && field.value) { view.historyDate = field.value; render(); return; }
-    if (field.id === 'medicine-photo') { if (field.files[0]) simulatePhoto(field.files[0]); return; }
     if (!modal) return;
+    if (modal.picker) return;
     if (modal.type === 'medicine' && field.closest('form')) {
       modal.draft = collectMedicine(field.closest('form'));
+      reconcileMedicineErrors();paintErrors();
       if (field.name === 'slots') {
-        field.closest('label').classList.toggle('is-checked', field.checked);
-        document.getElementById('frequency').textContent = `每天 ${modal.draft.slots.length} 次，各时段单次用量相同`;
+        const slot=field.value;renderModal();app.querySelector(`[name="slots"][value="${slot}"]`)?.focus({preventScroll:true});
       }
-      if (['doseUnit', 'duration'].includes(field.name)) renderModal();
+      if (field.name === 'duration') renderModal();
     }
     if (modal.type === 'health-form' && field.name === 'healthType') {
       modal.healthType = Object.keys(TYPES).find(key => TYPES[key].name === field.value);
@@ -531,6 +621,20 @@
     const value = target.dataset.value;
     const itemId = target.dataset.id;
     if (action === 'navigate') return navigate(target.dataset.page);
+    if (action === 'history' || action==='calendar-date') { view.historyDate=target.dataset.date||today();view.planTab='history';return navigate('plans'); }
+    if (action === 'summary-health' && TYPES[value]) { view.healthType=value;return navigate('health'); }
+    if (action === 'dismiss-errors') return dismissErrors();
+    if (action === 'cancel-picker' && modal?.picker) { modal.picker=null;renderModal();return; }
+    if (action === 'wheel-value' && modal?.picker) {
+      const part=target.dataset.part;modal.picker[part]=Number(target.dataset.number);
+      const wheel=app.querySelector(`[data-wheel="${part}"]`);wheel.scrollTop=(modal.picker[part]-Number(wheel.dataset.first))*44;updatePicker();return;
+    }
+    if (action === 'time-picker' && modal?.draft?.slotSettings) {
+      const setting=modal.draft.slotSettings[target.dataset.slot];modal.picker={slot:target.dataset.slot,hour:Number(setting.time.slice(0,2)),minute:Number(setting.time.slice(3))};renderModal();app.querySelector(`#picker-${target.dataset.part}`)?.focus({preventScroll:true});return;
+    }
+    if (action === 'meal' && modal?.draft?.slots.includes(target.dataset.slot)) {
+      const setting=modal.draft.slotSettings[target.dataset.slot];setting.meal=setting.meal===target.dataset.meal?'':target.dataset.meal;reconcileMedicineErrors();renderModal();return;
+    }
     if (action === 'close-modal') return closeModal();
     if (['accounts', 'clock', 'family', 'about', 'notifications', 'reset'].includes(action)) return openModal(action);
     if (action === 'profiles' && account().role === 'child') return openModal('profiles');
@@ -540,22 +644,24 @@
     if (action === 'font' && ['normal', 'elder'].includes(value)) { commit(next => { next.accounts.find(a => a.id === view.accountId).fontMode = value; }); render(); return; }
     if (action === 'plan-tab' && ['active', 'inactive', 'history'].includes(value)) { view.planTab = value; render(); return; }
     if (action === 'health-tab' && TYPES[value]) { view.healthType = value; render(); return; }
-    if (action === 'quick-add') return account().role === 'child' ? openModal('target') : openModal('quick', { targetId: account().profileId });
-    if (action === 'select-target' && canAccess(itemId)) return openModal('quick', { targetId: itemId });
-    if (action === 'add-med' && canAccess(modal?.targetId)) return newMedicine(modal.targetId);
-    if (action === 'add-health' && canAccess(modal?.targetId)) return openModal('health-form', { targetId: modal.targetId, healthType: view.healthType, draft: { values: {}, extras: [], measuredAt: `${today()}T${data.demoTime}`, note: '' } });
-    if (action === 'med-mode' && modal?.type === 'medicine') { modal.draft = collectMedicine(document.querySelector('[data-form="medicine"]')); clearTimeout(recognitionTimer); modal.recognizing = false; modal.mode = value; renderModal(); return; }
-    if (action === 'sample-photo') return simulatePhoto();
+    if (['quick-add','home-add-med','home-add-health'].includes(action)) {
+      const pid=profile()?.id;if(!canAccess(pid))return toast('请先绑定长辈档案。','warning');
+      const kind=action==='home-add-med'?'medicine':action==='home-add-health'?'health':view.page==='plans'?'medicine':'health';
+      return kind==='medicine'?newMedicine(pid):newHealth(pid);
+    }
+    if (action==='change-target' && account().role==='child') return openModal('target',{returnModal:clone(modal)});
+    if (action==='select-target' && canAccess(itemId) && modal?.returnModal) { const previous=modal.returnModal;openModal(previous.type,{...previous,targetId:itemId});return; }
+    if (action === 'med-mode' && modal?.type === 'medicine' && value==='manual') { modal.mode = value; renderModal(); return; }
     if (action === 'edit-med' && modal?.type === 'medicine-confirm') { modal.type = 'medicine'; renderModal(); return; }
     if (action === 'save-med' && modal?.type === 'medicine-confirm' && canAccess(modal.targetId)) {
       const d = modal.draft; const pid = modal.targetId;
       const editing = modal.planId;
-      if (commit(next => { R.savePlan(next, view.accountId, { ...d, doseUnit: d.doseUnit === '其他' ? d.customUnit : d.doseUnit, source: modal.recognized ? '历史模拟输入' : account().role === 'child' ? '家属协助录入' : '手动录入' }, pid, editing); })) { view.planTab = 'active'; selectTargetForChild(pid); navigate('plans'); toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
+      if (commit(next => { R.savePlan(next, view.accountId, { ...d, source: d.assisted ? '手动输入 · 家属协助' : '手动输入' }, pid, editing); })) { view.planTab = 'active'; selectTargetForChild(pid); navigate('plans'); toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
     }
     if (action === 'edit-health' && modal?.type === 'health-confirm') { modal.type = 'health-form'; renderModal(); return; }
     if (action === 'save-health' && modal?.type === 'health-confirm' && canAccess(modal.targetId)) {
       const d = modal.draft; const pid = modal.targetId; const type = modal.healthType;
-      if (commit(next => next.healthRecords.push({ id: id('health'), profileId: pid, type, values: Object.fromEntries(Object.entries(d.values).map(([k, v]) => [k, Number(v)])), extras: d.extras.map(e => ({ ...e, value: Number(e.value) })), measuredAt: d.measuredAt.replace('T', ' '), note: d.note, source: '手动录入', createdBy: view.accountId, createdAt: new Date().toISOString() }))) { view.healthType = type; selectTargetForChild(pid); navigate('health'); toast('测量记录已保存。'); } return;
+      if (commit(next => next.healthRecords.push({ id: id('health'), profileId: pid, type, values: Object.fromEntries(Object.entries(d.values).map(([k, v]) => [k, Number(v)])), extras: d.extras.map(e => ({ ...e, value: Number(e.value) })), measuredAt: d.measuredAt.replace('T', ' '), note: d.note, source: d.assisted ? '手动输入 · 家属协助' : '手动输入', assisted: d.assisted, createdBy: view.accountId, createdAt: new Date().toISOString() }))) { view.healthType = type; selectTargetForChild(pid); navigate('health'); toast('测量记录已保存。'); } return;
     }
     if (['add-extra', 'remove-extra'].includes(action) && modal?.type === 'health-form') {
       modal.draft = collectHealth(document.querySelector('[data-form="health"]'));
@@ -633,7 +739,7 @@
     if (!modal) return;
     if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
     if (event.key !== 'Tab') return;
-    const focusable = [...document.querySelectorAll('.modal-sheet button:not([disabled]), .modal-sheet input:not([disabled]), .modal-sheet select, .modal-sheet textarea')].filter(el => el.getClientRects().length);
+    const focusable = [...document.querySelectorAll('.modal-sheet button:not([disabled]), .modal-sheet input:not([disabled]), .modal-sheet select, .modal-sheet textarea')].filter(el => el.getClientRects().length && !el.closest('[inert]'));
     const first = focusable[0]; const last = focusable.at(-1);
     if (event.shiftKey && (document.activeElement === first || document.activeElement.classList.contains('modal-sheet'))) { event.preventDefault(); last?.focus(); }
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }

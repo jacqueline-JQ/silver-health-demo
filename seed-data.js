@@ -91,7 +91,7 @@ window.SILVER_SEED_DATA = {
       slots: ['睡前'],
       startDate: '2026-09-01',
       duration: '长期服用',
-      source: '模拟拍照识别',
+      source: '演示预设',
       status: 'active',
       color: 'purple',
       note: '请按实际处方服用',
