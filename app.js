@@ -7,6 +7,7 @@
   const DAY = '2026-09-13';
   const R = window.MedRules;
   const Bridge = window.DemoBridge;
+  const C = window.Conversation;
   const { SLOTS, STATUS } = R;
   const TYPES = {
     blood_pressure: { name: '血压', fields: [['systolic', '收缩压', 'mmHg'], ['diastolic', '舒张压', 'mmHg'], ['pulse', '脉搏', '次/分']] },
@@ -72,6 +73,7 @@
   const shownBanners = new Set();
   const drafts = new Map();
   const sessionViews = new Map();
+  const conversations = new Map();
   let focusScheduled = false;
 
   const account = () => data.accounts.find(a => a.id === view.accountId);
@@ -112,6 +114,7 @@
   const sessionKey = () => `${view.accountId}|${profile()?.id || ''}`;
   const workModal = m => m && ['medicine','medicine-confirm','health-form','health-confirm','chat'].includes(m.type);
   function preserveDraft() {
+    syncChatDraft();
     sessionViews.set(sessionKey(),{view:clone(view),scroll:app.querySelector('.app-main')?.scrollTop||0});
     if(workModal(modal)) {
       modal.scrollPositions ||= {};modal.scrollPositions[modal.picker?'picker':modal.type]=app.querySelector('.modal-sheet')?.scrollTop||0;
@@ -122,7 +125,7 @@
   function resumeDraft() {
     const saved=drafts.get(sessionKey());
     if(!saved || !canAccess(saved.modal.targetId))return toast('没有可继续的输入。','warning');
-    view={...saved.view,accountId:view.accountId};modal=clone(saved.modal);render();
+    view={...saved.view,accountId:view.accountId};modal=clone(saved.modal);hydrateChatDraft();render();
   }
   function switchAccount(accountId) {
     if(!data.accounts.some(a=>a.id===accountId))throw Error('演示账号不存在');
@@ -138,6 +141,159 @@
     if(!commit(next=>{next.accounts.find(a=>a.id===view.accountId).selectedProfileId=profileId;}))return;
     closeModal(false);view.page='home';overdueOpen=false;render();if(restore&&drafts.has(sessionKey()))resumeDraft();
   }
+
+  const emptyPlan = () => ({name:'',doseValue:'',doseUnit:'',slots:[],slotSettings:Object.fromEntries(Object.entries(SLOTS).map(([slot,time])=>[slot,{time,meal:''}])),startDate:today(),duration:'长期服用',endDate:'',note:'',assisted:account().role==='child'});
+  const emptyHealth = () => ({values:{},extras:[],measuredAt:`${today()}T${data.demoTime}`,note:'',assisted:account().role==='child'});
+  const withSource=(...sources)=>[...new Set(sources.filter(Boolean).flatMap(s=>s.split('、')))].join('、');
+  const fieldLabel=key=>({name:'药品名称',doseValue:'单次用量',doseUnit:'用量单位',slots:'服用时段',startDate:'开始日期',duration:'服用周期',endDate:'结束日期',note:'备注',assisted:'家属协助'}[key]||key.replace('time-','提醒：').replace('meal-','餐时：'));
+  function chatSession(key=modal?.chatKey) {
+    const c=conversations.get(key);
+    return c&&c.accountId===view.accountId&&canAccess(c.targetId)?c:null;
+  }
+  function chatMessage(c,text,role='assistant',source='') {c.messages.push({id:id('message'),role,text,source});if(role==='assistant')c.scrollToLatest=true;}
+  function syncChatDraft() {
+    const c=chatSession();if(!c||!modal.draft)return;
+    if(['medicine','medicine-confirm'].includes(modal.type))c.plan=modal.draft;
+    if(['health-form','health-confirm'].includes(modal.type)){c.health=modal.draft;c.healthType=modal.healthType;}
+  }
+  function hydrateChatDraft() {
+    const c=chatSession();if(!c)return;
+    if(['medicine','medicine-confirm'].includes(modal.type)){modal.draft=c.plan;modal.planId=c.planId;}
+    if(['health-form','health-confirm'].includes(modal.type)){modal.draft=c.health;modal.healthType=c.healthType;}
+  }
+  function openChat(entry='home',mode='text') {
+    const targetId=modal?.targetId||profile()?.id;if(!targetId||!canAccess(targetId))return toast('请先选择已绑定的长辈。','warning');
+    const key=`${view.accountId}|${targetId}`,previous=modal;
+    let c=chatSession(key);
+    if(!c){c={key,id:id('chat'),accountId:view.accountId,targetId,date:today(),entry,mode,intent:entry==='plan'?'plan':'home',messages:[],input:'',inputSource:'文字输入',plan:emptyPlan(),health:emptyHealth(),healthType:'blood_pressure',sources:{},cards:[],selectedId:null,status:'等待输入',example:'',preview:null,blocked:'',pendingSlots:null,expectedTimes:null};conversations.set(key,c);
+      chatMessage(c,entry==='plan'?'我来帮您整理用药计划。请先告诉我药品名称、每次用量和单位；也可以一起说时段和提醒时间，或直接点配置卡。':account().role==='elder'?`${account().name}，您好。您可以记录是否吃过药、添加药品、记录身体数据，也可以查询今天的用药安排。`:`${account().name}，您好。当前查看${data.elderProfiles.find(p=>p.id===targetId).name}。您可以查询、协助添加计划和身体数据，或对合格任务提醒 TA。`);
+    }
+    if(entry==='plan'){if(previous?.draft&&previous.type==='medicine'&&(previous.chatKey===key||previous.planId||!hasPlanInput(c.plan)||hasPlanInput(previous.draft))){if(c.planId!==previous.planId){c.blocked='';c.pendingSlots=null;c.expectedTimes=null;c.sources={};}c.plan=previous.draft;c.planId=previous.planId;}if(c.intent!=='plan'){chatMessage(c,'继续整理用药计划，已经填写的内容保留。');c.intent='plan';}}
+    c.mode=mode;openModal('chat',{targetId,chatKey:key,planId:c.planId});
+  }
+  function returnChat(key) {
+    syncChatDraft();const c=chatSession(key);if(!c)return toast('当前账号无权继续该会话。','warning');
+    openModal('chat',{targetId:c.targetId,chatKey:key,planId:c.planId});
+  }
+  function chatPlanProblems(c) {
+    const errors=R.planErrors(c.plan);
+    if(c.blocked)errors.name=c.blocked;
+    if(c.pendingSlots)errors.slots='请明确确认“早晚”对应的时段。';
+    if(c.expectedTimes&&c.expectedTimes!==c.plan.slots.length)errors.slots=`您说每天${c.expectedTimes}次，当前选择${c.plan.slots.length}个时段，请澄清。`;
+    return errors;
+  }
+  function chatPlanQuestion(c) {
+    const errors=chatPlanProblems(c),known=[c.plan.name&&`药名 ${c.plan.name}`,c.plan.doseValue&&`每次 ${c.plan.doseValue} ${c.plan.doseUnit||'（单位待补）'}`].filter(Boolean).join('，');
+    return `${known?`已记下：${known}。`:''}${Object.values(errors)[0]||'信息已整理，可在下方配置卡修改；开始日期和长期周期是表单默认值，请核对。餐时与备注可以不设。'} 尚未创建计划。`;
+  }
+  function chatOpenForm(kind) {
+    const c=chatSession();if(!c)return;
+    const key=c.key;syncChatDraft();
+    if(kind==='plan')openModal('medicine',{targetId:c.targetId,chatKey:key,draft:c.plan,planId:c.planId,mode:'manual'});
+    else openModal('health-form',{targetId:c.targetId,chatKey:key,draft:c.health,healthType:c.healthType});
+  }
+  function chatIntent(c,intent) {
+    if(c.busy){c.processingId=null;c.busy=false;chatMessage(c,'已取消上一条处理中输入，原文保留在对话中。');}
+    c.intent=intent;c.cards=[];c.selectedId=null;c.status='正在询问';
+    if(intent==='plan')chatMessage(c,chatPlanQuestion(c));
+    else if(intent==='health')chatMessage(c,'要记录血压、血脂还是身体指标？可以一次说多项。测量时间和单位请在卡片中核对，备注仅记录您的转述。');
+    else if(intent==='query'){c.cards=eventsOn(today(),c.targetId).map(e=>e.id);chatMessage(c,c.cards.length?'按已保存的计划，今天的安排如下。点击具体任务后可以追问几点、多少。':'当前没有找到对应的用药计划／任务。可以查看用药信息或添加计划。');}
+    else if(['record','makeup','snooze','correct','remind'].includes(intent)) {
+      if(account().role==='child'&&intent!=='remind'){c.status='无权限';chatMessage(c,'只有长辈本人可以声明、补记、更正或延后。您可以查询、协助添加，或发起合格模拟提醒。');return;}
+      const tasks=data.doseEvents.filter(e=>e.profileId===c.targetId&&!e.cancelledAt&&(intent==='makeup'?stateOf(e)==='overdue':intent==='correct'?resolved(e):e.date===today()));c.cards=tasks.map(e=>e.id);
+      chatMessage(c,tasks.length?'请先选择具体药品、日期和时段。打开卡片不会自动记录。':'还没有找到对应任务。可查看已有任务或创建适用计划，不追造过去任务。');
+    }else chatMessage(c,'可以查询安排、添加药品或身体数据；请选择一项，或输入具体内容。');
+  }
+  function chatTaskCard(e,selectable=true) {
+    return `<article class="chat-task"><strong>${esc(e.snapshot.name)}</strong><p>${esc(e.date)} · ${e.slot} · 计划 ${esc(e.snapshot.doseValue)} ${esc(e.snapshot.doseUnit)}</p><p>提醒 ${e.scheduledTime} ${mealTag(e)||'· 餐时未设置'}</p>${badge(e)}${selectable?button('选择这次任务','chat-task','button-secondary',`data-id="${esc(e.id)}"`):''}</article>`;
+  }
+  function chatContent() {
+    const c=chatSession();if(!c)return ['无法继续','<p>当前账号无权查看该会话。</p>'];
+    if(c.intent==='plan')modal.draft=c.plan;
+    const queryTasks=c.cards.map(taskId=>data.doseEvents.find(e=>e.id===taskId&&e.profileId===c.targetId&&!e.cancelledAt)).filter(Boolean),selected=data.doseEvents.find(e=>e.id===c.selectedId&&e.profileId===c.targetId&&!e.cancelledAt);
+    const suggestions=[['query','今天吃什么药'],['plan','添加药品'],['health','添加身体数据'],...(account().role==='elder'?[['record','记录服药'],['snooze','稍后提醒'],['makeup','补记用药']]:[['remind','提醒 TA']])];
+    let config='';
+    if(c.intent==='plan')config=`<section class="chat-config"><h3>当前计划草稿 · 未保存</h3>${c.blocked?`<p class="chat-conflict" role="alert">${esc(c.blocked)}</p>`:''}${c.pendingSlots?`<p>您说“早晚”，请确认具体时段。</p>${button('确认早餐和晚餐','chat-confirm-slots','button-secondary')}`:''}${c.expectedTimes?`<p>用户描述每天 ${c.expectedTimes} 次；当前勾选 ${c.plan.slots.length} 次。</p>`:''}<form data-form="chat-plan" novalidate>${medicineFields(c.plan)}${submit('核对用药计划')}</form>${button('改为手动输入','chat-form-plan','text-button')}<details><summary>字段来源与默认值</summary><p>开始日期、长期周期、各时段提醒为可编辑默认值；未推断餐时。</p>${Object.entries(c.sources).map(([k,v])=>`<p>${esc(fieldLabel(k))}：${esc(v)}</p>`).join('')}</details></section>`;
+    if(c.intent==='health')config=`<section class="chat-config"><h3>${TYPES[c.healthType].name}草稿 · 未保存</h3><p>${Object.entries(c.health.values).map(([k,v])=>`${TYPES[c.healthType].fields.find(f=>f[0]===k)?.[1]||k} ${v} ${TYPES[c.healthType].fields.find(f=>f[0]===k)?.[2]||''}`).map(esc).join('；')||'尚无测量值'}</p><p>测量时间：${esc(c.health.measuredAt.replace('T',' '))}（请核对）</p>${c.health.note?`<p>${esc(c.health.note)}</p>`:''}${button('编辑并核对测量记录','chat-form-health','button-secondary')}</section>`;
+    return [c.entry==='plan'?'添加药品打卡计划':'AI 助手',`<p class="chat-context">${esc(account().name)} · 记录对象：<strong>${esc(targetName())}</strong> · ${today()}${account().role==='child'?button('切换长辈','chat-profile','text-button'):''}</p><p class="chat-disclaimer">有限文字规则与示例语音模拟，不接麦克风或模型，不提供医疗建议。</p><div class="chat-stream" role="log" aria-label="对话消息" aria-live="polite">${c.messages.map(m=>`<article class="chat-message ${m.role}"><small>${m.role==='user'?`您 · ${esc(m.source||'文字输入')}`:'药安心助手'}</small><p>${esc(m.text)}</p></article>`).join('')}</div><p class="chat-status" role="status">${esc(c.status)}${c.date!==today()?' · 演示日期已变化，任务按最新状态重新核验':''}</p><div class="chat-suggestions">${suggestions.map(([kind,label])=>button(label,'chat-intent','chip',`data-intent="${kind}"`)).join('')}${button('查看用药信息','chat-view','chip','data-page="plans"')}</div>${config}<div class="chat-tasks">${queryTasks.map(e=>chatTaskCard(e)).join('')}</div>${selected?`<section class="chat-selected"><h3>当前明确任务</h3>${chatTaskCard(selected,false)}${c.ambiguous?'<p class="chat-conflict">这一次到现在还没有服用，还是后来已经服用了？请明确选择。</p>':''}${doseActions(selected)}${c.followup?button('暂不处理这项','chat-dismiss-followup','text-button'):''}</section>`:''}<div class="chat-composer"><div class="mode-tabs">${button('文字','chat-mode',c.mode==='text'?'is-active':'',`data-mode="text" aria-pressed="${c.mode==='text'}"`)}${button('按住说话（模拟）','chat-mode',c.mode==='voice'?'is-active':'',`data-mode="voice" aria-pressed="${c.mode==='voice'}"`)}</div>${c.mode==='voice'?`<label class="voice-label" for="voice-example">选择示例语音内容</label><select id="voice-example" data-chat-example><option value="">请选择，不会自动发送</option>${C.examples.map(([label,text],i)=>`<option value="${i}" ${String(i)===c.example?'selected':''}>${esc(label)}：${esc(text)}</option>`).join('')}</select>${button('按住体验语音输入（模拟）','voice-experience','voice-pad')}${button('点按体验（等效操作）','voice-experience','text-button')}`:''}${c.preview?`<p class="voice-preview-label">示例文字预览，可修改；发送前不会更新草稿</p>${button('取消示例','voice-cancel','text-button')}`:''}<form data-form="chat"><label class="sr-only" for="chat-input">输入消息</label><textarea id="chat-input" name="message" rows="2" maxlength="1000" placeholder="输入文字，或编辑示例内容">${esc(c.input)}</textarea><div class="chat-send">${button('重新输入','chat-clear','text-button')}<button class="button-primary" type="submit" ${c.busy?'disabled':''}>发送</button></div></form></div>`];
+  }
+  function chatSaved(key,text,eventId) {
+    const c=chatSession(key);if(!c)return;
+    c.status='已保存';c.intent='home';c.cards=[];c.selectedId=null;c.ambiguous=false;chatMessage(c,text);
+    if(eventId&&account().role==='elder') {
+      const next=data.doseEvents.find(e=>e.profileId===c.targetId&&e.id!==eventId&&stateOf(e)==='overdue');
+      if(next){c.selectedId=next.id;c.followup=true;chatMessage(c,`你有未打卡的记录：${next.snapshot.name}，${next.date} ${next.slot}，计划 ${next.snapshot.doseValue} ${next.snapshot.doseUnit}。这次已经服用、未服用，还是本次无需服用？`);}
+    }
+    modal=null;render();openModal('chat',{targetId:c.targetId,chatKey:key});
+  }
+  function processChat(c,text,source) {
+    const inferred=C.intent(text,c.intent);c.status='正在询问';
+    if(inferred==='medical'){chatMessage(c,'我可以整理和查询已保存的安排，不能推荐药物、增减剂量或作健康判断。请查看已有计划；涉及用药决定请向医生或药师确认。');return;}
+    if(account().role==='child'&&['record','makeup','snooze','correct'].includes(inferred)){c.cards=[];c.selectedId=null;c.status='无权限';chatMessage(c,'只有长辈本人可以声明、补记、更正或延后。文字、示例语音和任务卡都遵守同一权限。');return;}
+    if(inferred==='plan') {
+      c.intent='plan';c.cards=[];c.selectedId=null;const result=C.parsePlan(text,c.plan);c.plan=result.draft;
+      if(result.blocked)c.blocked=result.issues[0];else if(result.resolveBlocked)c.blocked='';
+      if(result.pendingSlots)c.pendingSlots=result.pendingSlots;
+      if(result.expectedTimes!==undefined)c.expectedTimes=result.expectedTimes;
+      if(result.changed.includes('slots'))c.pendingSlots=null;
+      result.changed.forEach(field=>{c.sources[field]=source;});c.plan.source=withSource(c.plan.source,source);
+      chatMessage(c,[...result.issues,chatPlanQuestion(c)].join(' '));if(!result.changed.length&&!result.issues.length)chatMessage(c,'这段表达未能确定新的字段。原文保留，可用下方卡片或手动填写。');return;
+    }
+    if(inferred==='health') {
+      c.intent='health';c.cards=[];c.selectedId=null;const result=C.parseHealth(text,c.health,c.healthType,today(),data.demoTime);if(result.type!==c.healthType)c.healthConflicts={};c.health=result.draft;c.healthType=result.type;c.health.source=withSource(c.health.source,source);c.healthConflicts={...c.healthConflicts,...result.uncertain};for(const key of result.changed)delete c.healthConflicts[key];c.healthIssues=Object.values(c.healthConflicts);
+      chatMessage(c,`${result.changed.length?'已将您提供的测量值放入草稿。':'请补充测量类型和数值。'}${result.issues.join(' ')}单位和测量时间需要在“编辑并核对测量记录”中确认，确认保存前不会成为健康记录。`);return;
+    }
+    if(inferred==='query') {
+      c.intent='query';const available=eventsOn(today(),c.targetId);let tasks=C.taskFilter(text,available,today());
+      if(/几点|多少|计划用量/.test(text)&&c.selectedId&&!/今天|晚上|早餐|午餐|晚餐|睡前/.test(text))tasks=available.filter(e=>e.id===c.selectedId);
+      c.cards=tasks.map(e=>e.id);c.selectedId=tasks.length===1?tasks[0].id:null;
+      chatMessage(c,tasks.length?'按已保存的计划，当前安排如下。多个任务请先选择具体一项，提醒时间不代表实际服药时间。':'当前没有找到对应的用药计划／任务。可以查看用药信息或添加计划。');return;
+    }
+    if(['record','makeup','snooze','correct','remind'].includes(inferred)) {
+      c.intent=inferred;let e=data.doseEvents.find(e=>e.id===c.selectedId&&e.profileId===c.targetId&&!e.cancelledAt);
+      const all=data.doseEvents.filter(t=>t.profileId===c.targetId&&!t.cancelledAt);
+      const named=all.some(t=>text.includes(t.snapshot.name));
+      const otherTarget=text.match(/^(.{1,50}?)(?:已经(?:吃|服)|吃过|还没吃|未服用|没有按时服用)/)?.[1]?.replace(/我|这次|这回|这个药|这项|刚才|后来|现在|今天|早餐|午餐|晚餐|睡前|的|[，, ]/g,'');
+      if(otherTarget&&!named){c.cards=[];c.selectedId=null;chatMessage(c,'还没有找到您提到的对应任务。请明确选择已有任务；不会沿用上一种药来记录，也不会新建临时服药记录。');return;}
+      if(named){const found=C.taskFilter(text,all,today());e=found.length===1?found[0]:null;c.selectedId=e?.id||null;c.cards=found.map(t=>t.id);}
+      if(!e){c.cards=C.taskFilter(text,inferred==='makeup'?all.filter(t=>stateOf(t)==='overdue'):all.filter(t=>t.date===today()),today()).map(t=>t.id);chatMessage(c,c.cards.length?'请先选择对应的药品、原日期与时段，再明确本次声明；不会猜测或批量打卡。':'还没有找到对应任务。请选择已有任务，或创建适用计划；不会新建无计划的临时服药记录。');return;}
+      if(inferred==='snooze'){const duration=text.match(/(\d+)\s*分钟/)?.[1];chatMessage(c,duration&&!['5','30'].includes(duration)?'仅支持5分钟或30分钟，请点选，不会取近似值。':'请选择5分钟或30分钟。按钮会显示设置后的完整日期时间；原任务时段不变。');return;}
+      if(inferred==='remind'){chatMessage(c,R.reminderReason(data,view.accountId,e)||'这项符合提醒条件，请点击“提醒 TA（模拟）”。');return;}
+      if(inferred==='correct'){chatMessage(c,'请点击当前任务的“更正记录”，核对后确认；原记录会保留。');return;}
+      const declaration=C.declaration(text,e.snapshot.name);
+      if(declaration.ambiguous){c.ambiguous=true;chatMessage(c,'这一次到现在还没有服用，还是后来已经服用了？未明确前保留原记录。');return;}
+      if(declaration.fact){if(resolved(e)){chatMessage(c,'这次已有声明。若需修改，请进入“更正记录”，不会重复记录。');return;}
+        if(declaration.fact==='skipped'){openModal('dose-confirm',{eventId:e.id,status:'skipped',chatKey:c.key,actual:text});return;}
+        const selfDose=text.match(/吃(?:过了|了)?(半|一|两|\d+(?:\.\d+)?)(片|粒|包|袋|毫升)/);const differs=selfDose&&(C.number(selfDose[1])!==Number(e.snapshot.doseValue)||selfDose[2]!==e.snapshot.doseUnit);
+        const actual=/\d|半片|一片|两片|点/.test(text)?`用户自述（未经核验）：${text}${differs?'；自述用量与计划不同，仅保留本人声明，不生成剩余剂量任务。':''}`:null;
+        recordDose(e.id,declaration.fact,{actual,inputSource:source,operationId:id('chat-record')});return;}
+      chatMessage(c,'请明确选择已服用、未服用或本次无需服用；不用补填实际时间和数量。');return;
+    }
+    chatMessage(c,'我还不能确定这段表达的意图，原文已保留。可选择下方事项或使用手动表单。');c.status='无法理解';
+  }
+  function sendChat() {
+    const c=chatSession();if(!c||c.busy||!c.input.trim())return;
+    const text=c.input.trim(),source=c.preview?'示例输入（模拟）':'文字输入',key=c.key,sessionId=c.id,processingId=id('processing');c.processingId=processingId;
+    c.busy=true;c.status=c.preview?'模拟处理中':'文字处理中';chatMessage(c,text,'user',source);c.input='';c.preview=null;renderModal();
+    setTimeout(()=>{
+      if(conversations.get(key)?.id!==sessionId||c.processingId!==processingId)return;c.busy=false;
+      if(!chatSession(key)||modal?.chatKey!==key||modal.type!=='chat'){c.status='已取消';chatMessage(c,'处理期间切换了对象或页面，本轮未提交，请回到此会话重新发送。');return;}
+      processChat(c,text,source);if(modal?.type==='chat')renderModal();publishState();
+    },120);
+  }
+  function previewVoice() {
+    const c=chatSession();if(!c)return;if(c.example==='') {c.status='正在询问';chatMessage(c,'请先选择示例，或切换文字输入；不会随机生成识别结果。');renderModal();return;}
+    if(!c.preview)c.beforePreview=c.input;c.preview=true;c.mode='voice';c.status='示例语音体验中';c.input=C.examples[Number(c.example)][1];renderModal();
+  }
+  let longPress=null,suppressLongClick=false;
+  app.addEventListener('pointerdown',event=>{
+    suppressLongClick=false;
+    clearTimeout(longPress?.timer);
+    const target=event.target.closest('[data-action="assistant"],[data-action="voice-experience"]');if(!target||event.button!==0)return;
+    longPress={x:event.clientX,y:event.clientY,fired:false,timer:setTimeout(()=>{if(!longPress)return;longPress.fired=true;suppressLongClick=true;if(target.dataset.action==='assistant')openChat('home','voice');else previewVoice();},500)};
+  });
+  app.addEventListener('pointermove',event=>{if(longPress&&!longPress.fired&&Math.hypot(event.clientX-longPress.x,event.clientY-longPress.y)>12){clearTimeout(longPress.timer);longPress=null;}});
+  for(const type of ['pointerup','pointercancel'])document.addEventListener(type,()=>{if(longPress){clearTimeout(longPress.timer);if(longPress.fired)setTimeout(()=>{suppressLongClick=false;},350);longPress=null;}});
   function notificationList() {
     return data.notificationLogs.filter(n=>n.kind&&n.recipientId===view.accountId&&canAccess(n.profileId)).map(n=>{
       const e=data.doseEvents.find(e=>e.id===n.eventId),currentState=R.stateOf(n.kind==='N2'?R.simulatedRemote(e):e,data);
@@ -270,7 +426,8 @@
     if (!R.canDeclare(data, view.accountId, event)) return '<p class="helper-text">尚未到此时段或任务已取消</p>';
     if (resolved(event)) return button('更正记录', 'correct-dose', 'text-button', `data-id="${event.id}"`);
     const reason = R.snoozeReason(data, view.accountId, event);
-    return `<div class="dose-actions">${button(`${icon('check')}已服用`, 'take', 'button-primary', `data-id="${event.id}"`)}${button('未服用', 'declare', 'button-secondary', `data-id="${event.id}" data-status="not_taken"`)}${button('本次无需服用', 'dose-confirm', 'button-secondary', `data-id="${event.id}" data-status="skipped"`)}</div><div class="snooze-actions">${[5, 30].map(n => button(`延后 ${n} 分钟`, 'snooze', 'button-secondary button-small', `data-id="${event.id}" data-minutes="${n}" ${reason ? 'disabled aria-disabled="true"' : ''}`)).join('')}</div><p class="helper-text">${esc(reason ? (event.snoozeUsed ? '* 延后机会已用完，请按实际情况记录' : reason) : '* 本次任务仅有 1 次延后机会')}</p>`;
+    const delayPreview=chatSession()&&!reason?`<p class="helper-text">5分钟后：${displayTime(R.plusMinutes(now(),5))}<br>30分钟后：${displayTime(R.plusMinutes(now(),30))}</p>`:'';
+    return `<div class="dose-actions">${button(`${icon('check')}已服用`, 'take', 'button-primary', `data-id="${event.id}"`)}${button('未服用', 'declare', 'button-secondary', `data-id="${event.id}" data-status="not_taken"`)}${button('本次无需服用', 'dose-confirm', 'button-secondary', `data-id="${event.id}" data-status="skipped"`)}</div>${delayPreview}<div class="snooze-actions">${[5, 30].map(n => button(`延后 ${n} 分钟`, 'snooze', 'button-secondary button-small', `data-id="${event.id}" data-minutes="${n}" ${reason ? 'disabled aria-disabled="true"' : ''}`)).join('')}</div><p class="helper-text">${esc(reason ? (event.snoozeUsed ? '* 延后机会已用完，请按实际情况记录' : reason) : '* 本次任务仅有 1 次延后机会')}</p>`;
   }
 
   function recordDetails(event) {
@@ -380,7 +537,7 @@
     document.documentElement.dataset.os=data.notificationStyle;
     const scroll = document.querySelector('.app-main')?.scrollTop || 0;
     const pages = { home: homePage, plans: plansPage, health: healthPage, me: mePage };
-    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>${Bridge.embedded?'本地演示':`本地演示 · ${today()} ${data.demoTime}`}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}${drafts.has(sessionKey())?`<div class="draft-resume">${button('继续未完成的输入','resume-draft','text-button')}</div>`:''}${data.simulationMode!=='online'?`<div class="simulation-note">${data.simulationMode==='offline'?'离线／待同步模拟：所有操作仍保存在本机，无真实远端连接。':'通知发送失败模拟：记录可正常保存。'}</div>`:''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${['plans', 'health'].includes(view.page) ? button(icon('plus'), 'quick-add', 'fab', `aria-label="${view.page === 'plans' ? '添加药品打卡计划' : '添加身体数据'}"`) : ''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', account().role === 'child' ? '首页看板' : '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
+    app.innerHTML = `<div class="app-shell font-${account().fontMode}"><div class="app-main" id="page-region"><div class="demo-strip"><span>${Bridge.embedded?'本地演示':`本地演示 · ${today()} ${data.demoTime}`}</span><span>${esc(account().name)} · ${account().role === 'elder' ? '长辈' : '子女'}</span></div>${storageWarning ? `<div class="storage-warning" role="alert">${esc(storageWarning)}</div>` : ''}${drafts.has(sessionKey())?`<div class="draft-resume">${button('继续未完成的输入','resume-draft','text-button')}</div>`:''}${data.simulationMode!=='online'?`<div class="simulation-note">${data.simulationMode==='offline'?'离线／待同步模拟：所有操作仍保存在本机，无真实远端连接。':'通知发送失败模拟：记录可正常保存。'}</div>`:''}<div class="page-content">${pages[view.page]()}</div><footer class="page-footer">药安心 · 家庭协同</footer></div>${['plans', 'health'].includes(view.page) ? button(icon('plus'), 'quick-add', 'fab', `aria-label="${view.page === 'plans' ? '添加药品打卡计划' : '添加身体数据'}"`) : view.page==='home'?button(icon('chat'),'assistant','fab assistant-fab','aria-label="AI 助手，点击文字或长按模拟语音"'):''}<nav class="bottom-nav" aria-label="主导航">${[['home', 'heartbeat', account().role === 'child' ? '首页看板' : '服药打卡'], ['plans', 'pill', '用药信息'], ['health', 'chart', '身体数据'], ['me', 'user', '我的']].map(([key, symbol, label]) => button(`<span class="nav-icon-wrap">${icon(symbol)}</span><span>${label}</span>`, 'navigate', `nav-item ${view.page === key ? 'is-active' : ''}`, `data-page="${key}" ${view.page === key ? 'aria-current="page"' : ''}`)).join('')}</nav><div id="modal-root"></div><div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div></div>`;
     document.querySelector('.app-main').scrollTop = scroll;
     renderModal();
     rememberView();
@@ -408,6 +565,8 @@
   }
 
   function openModal(type, fields = {}) {
+    document.querySelectorAll('.modal-exit-copy').forEach(element=>{element.remove();});
+    if(modal?.type==='chat'){const c=chatSession();if(c)c.scrollTop=app.querySelector('.chat-sheet > .sheet-content')?.scrollTop||0;}
     if (!modal) {
       const active = document.activeElement;
       modalReturnFocus = active?.dataset.action ? { action: active.dataset.action, id: active.dataset.id, page: active.dataset.page } : null;
@@ -423,6 +582,7 @@
     if(restore&&modal)animateModalExit();
     if (restore && modal?.type==='focus') { dismissFocus();return; }
     if (restore && modal?.focusContext) {modal=modal.focusContext;renderModal();return;}
+    if(restore&&modal?.chatKey&&modal.type!=='chat'){returnChat(modal.chatKey);return;}
     const hasDraft=restore&&workModal(modal);if(hasDraft)preserveDraft();
     modal = null;
     document.getElementById('modal-root')?.replaceChildren();
@@ -454,6 +614,7 @@
     const root = document.getElementById('modal-root');
     if (!root) return;
     if (!modal) { closeModal(false); return; }
+    const oldChatContent=root.querySelector('.chat-sheet > .sheet-content');if(oldChatContent&&chatSession())chatSession().scrollTop=oldChatContent.scrollTop;
     modal.scrollPositions ||= {};
     if(root.dataset.contentKey) modal.scrollPositions[root.dataset.contentKey]=root.querySelector('.modal-sheet')?.scrollTop || 0;
     const contentKey=modal.picker?'picker':modal.type;
@@ -463,6 +624,13 @@
     if(modal.type==='focus') {
       root.querySelector('.modal-sheet').classList.add('focus-sheet');
       root.querySelector('.close-button').setAttribute('aria-label','关闭提醒，查看对应时段列表');
+    }
+    if(modal.type==='chat'&&!modal.picker) {
+      root.querySelector('.modal-sheet').classList.add('chat-sheet');
+      const context=root.querySelector('.chat-context');if(context)root.querySelector('.modal-sheet').insertBefore(context,root.querySelector('.sheet-content'));
+      const composer=root.querySelector('.chat-composer');if(composer)root.querySelector('.modal-sheet').append(composer);
+      const c=chatSession(),content=root.querySelector('.sheet-content');
+      if(c){content.scrollTop=c.scrollTop||0;if(c.scrollToLatest){const last=root.querySelector('.chat-message:last-child');if(last)content.scrollTop=last.offsetTop-content.offsetTop;c.scrollToLatest=false;}}
     }
     document.getElementById('page-region').setAttribute('inert', '');
     document.querySelector('.bottom-nav').setAttribute('inert', '');
@@ -479,6 +647,7 @@
     if (modal.errors) paintErrors();
     if (modal.errorLayer) {
       root.querySelector('.sheet-content').setAttribute('inert', '');
+      root.querySelector('.chat-composer')?.setAttribute('inert','');
       root.querySelector('.modal-header').setAttribute('inert', '');
       root.querySelector('.modal-sheet').insertAdjacentHTML('beforeend', `<div class="form-alert" role="alertdialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-description"><h3 id="error-title">还有必填信息未完成</h3><p id="error-description">还有必填信息未完成，请填写标红的框后再核对用药计划。</p>${button('去完善', 'dismiss-errors')}</div>`);
       root.querySelector('[data-action="dismiss-errors"]').focus();
@@ -501,13 +670,14 @@
 
   function modalContent() {
     const m = modal;
+    if(m.type==='chat')return chatContent();
     if(m.type==='focus')return focusContent();
     if(m.type==='notice-invalid')return ['提醒已失效',`<p>${esc(m.message)}</p>`];
     if(m.type==='notification-settings')return ['模拟通知设置',`<p>只控制网页内模拟通知，不请求系统权限。</p><label class="consent-row"><input type="checkbox" data-notice-option="notificationsEnabled" ${data.notificationsEnabled?'checked':''}>启用模拟通知</label><label class="consent-row"><input type="checkbox" data-notice-option="privatePreview" ${data.privatePreview?'checked':''}>模拟锁屏使用简洁预览</label><p class="helper-text">关闭后仍可查看和手动记录。${data.notificationsEnabled?'模拟横幅已开启':'系统通知未开启（模拟）'}</p>`];
     if (m.type === 'accounts') return ['切换演示账号', accountOptions()];
     if (m.type === 'profiles') return ['查看哪位长辈', targetOptions('select-profile')];
     if (m.type === 'target') return ['为哪位长辈添加', targetOptions('select-target')];
-    if (m.type === 'medicine') return ['添加药品打卡计划', medicineForm()];
+    if (m.type === 'medicine') return [m.planId?'编辑药品打卡计划':'添加药品打卡计划', medicineForm()];
     if (m.type === 'medicine-confirm') return ['确认用药计划', medicineReview()];
     if (m.type === 'health-form') return ['记录身体数据', healthForm()];
     if (m.type === 'health-confirm') return ['确认测量记录', healthReview()];
@@ -541,24 +711,27 @@
   }
 
   // 表单保留草稿，只有预览页的确认操作会写入共享数据。
+  function hasPlanInput(d) {return !!(d.name||d.doseValue||d.doseUnit||d.slots.length||d.note||d.endDate);}
   function newMedicine(targetId) {
-    openModal('medicine', { targetId, mode: 'manual', draft: { name: '', doseValue: '', doseUnit: '', slots: [], slotSettings: Object.fromEntries(Object.entries(SLOTS).map(([slot, time]) => [slot, { time, meal: '' }])), startDate: today(), duration: '长期服用', endDate: '', note: '', assisted: account().role === 'child' } });
+    const c=chatSession(`${view.accountId}|${targetId}`);
+    if(c&&(hasPlanInput(c.plan)||c.planId)){c.intent='plan';openModal('medicine',{targetId,mode:'manual',draft:c.plan,chatKey:c.key,planId:c.planId});return;}
+    openModal('medicine', { targetId, mode: 'manual', draft: emptyPlan() });
   }
 
   function medicineForm() {
     const d = modal.draft;
-    return `${targetCaption()}<div class="mode-tabs" role="tablist" aria-label="药物录入方式">${button('手动输入','med-mode','mode-tab is-active','role="tab" aria-selected="true" data-value="manual"')}${button('AI语音输入','med-mode','mode-tab','role="tab" aria-selected="false" data-value="voice" disabled title="第4步接入"')}</div><form data-form="medicine" novalidate>${medicineFields(d)}${errorBox()}<div class="form-footer">${submit('核对用药计划')}</div></form>`;
+    return `${targetCaption()}<div class="mode-tabs" role="tablist" aria-label="药物录入方式">${button('手动输入','med-mode','mode-tab is-active','role="tab" aria-selected="true" data-value="manual"')}${button('AI语音输入','med-mode','mode-tab','role="tab" aria-selected="false" data-value="voice"')}</div><form data-form="medicine" novalidate>${medicineFields(d)}${errorBox()}<div class="form-footer">${submit('核对用药计划')}</div></form>`;
   }
 
   const required = label => `${label} <span class="required-star" aria-hidden="true">*</span>`;
   function targetCaption() {
-    return `<p class="target-caption">记录对象：<strong>${esc(targetName())}</strong>${account().role==='child'&&!modal.planId?button('改选','change-target','text-button'):''}</p>`;
+    return `<p class="target-caption">记录对象：<strong>${esc(targetName())}</strong>${account().role==='child'&&!modal.planId&&!modal.chatKey?button('改选','change-target','text-button'):''}</p>`;
   }
   function medicineFields(d) {
     return `${input('name',required('药品名称'),d.name,'text','required maxlength="80" autocomplete="off"')}${input('doseValue',required('单次用量（请输入数字）'),d.doseValue,'number','required min="0.000001" step="any" inputmode="decimal"')}${input('doseUnit',required('用量单位'),d.doseUnit,'text','required maxlength="12" list="dose-units"')}<datalist id="dose-units">${['片','粒','包','袋','支','毫升','滴','喷','瓶'].map(u=>`<option value="${u}">`).join('')}</datalist>${slotFields(d)}${input('startDate',required('开始日期'),d.startDate,'date','required')}${select('duration',required('服用周期'),['长期服用','截至某日期'],d.duration)}${d.duration==='截至某日期'?input('endDate',required('结束日期'),d.endDate,'date','required'):''}${input('note','服用备注（选填）',d.note,'text','maxlength="240"')}<label class="consent-row"><input name="assisted" type="checkbox" ${d.assisted?'checked':''}><span>本次由家属协助录入</span></label>`;
   }
   function slotFields(d) {
-    return `<fieldset class="slot-fieldset" data-field="slots"><legend>${required('服用时段')}</legend><div class="slot-grid"><div class="slot-head"><span>选择</span><span>时段</span><span>提醒推送</span><span>餐时（选填）</span></div>${Object.entries(SLOTS).map(([slot,time])=>{const selected=d.slots.includes(slot);const setting=d.slotSettings[slot]||{time,meal:''};return `<div class="slot-line ${selected?'is-selected':''}"><label class="slot-checkbox"><input type="checkbox" name="slots" value="${slot}" aria-label="选择${slot}" ${selected?'checked':''}></label><span class="slot-name">${slot}<small>${{早餐:'05:00–11:00',午餐:'11:00–16:00',晚餐:'16:00–20:00',睡前:'20:00–24:00'}[slot]}</small></span><div class="slot-time" data-field="time-${slot}">${button(`${setting.time.slice(0,2)}<span>时</span>`,'time-picker','time-part',`data-slot="${slot}" data-part="hour" aria-label="${slot}提醒小时"`)}${button(`${setting.time.slice(3)}<span>分</span>`,'time-picker','time-part',`data-slot="${slot}" data-part="minute" aria-label="${slot}提醒分钟"`)}<span class="required-star" aria-hidden="true">${selected?'*':''}</span></div><div class="meal-segment" role="group" aria-label="${slot}餐时">${['餐前','餐后'].map(meal=>button(meal,'meal',setting.meal===meal?'is-selected':'',`data-slot="${slot}" data-meal="${meal}" aria-pressed="${setting.meal===meal}" ${selected?'':'disabled'}`)).join('')}</div></div>`;}).join('')}</div><p id="frequency" class="helper-text">每天 ${d.slots.length} 次，各时段单次用量相同</p></fieldset>`;
+    return `<fieldset class="slot-fieldset" data-field="slots"><legend>${required('服用时段')}</legend><div class="slot-grid"><div class="slot-head"><span>选择</span><span>时段</span><span>提醒推送</span><span>餐时<br><small>（选填）</small></span></div>${Object.entries(SLOTS).map(([slot,time])=>{const selected=d.slots.includes(slot);const setting=d.slotSettings[slot]||{time,meal:''};return `<div class="slot-line ${selected?'is-selected':''}"><label class="slot-checkbox"><input type="checkbox" name="slots" value="${slot}" aria-label="选择${slot}" ${selected?'checked':''}></label><span class="slot-name">${slot}<small>${{早餐:'05:00–11:00',午餐:'11:00–16:00',晚餐:'16:00–20:00',睡前:'20:00–24:00'}[slot]}</small></span><div class="slot-time" data-field="time-${slot}">${button(`${setting.time.slice(0,2)}<span>时</span>`,'time-picker','time-part',`data-slot="${slot}" data-part="hour" aria-label="${slot}提醒小时"`)}${button(`${setting.time.slice(3)}<span>分</span>`,'time-picker','time-part',`data-slot="${slot}" data-part="minute" aria-label="${slot}提醒分钟"`)}<span class="required-star" aria-hidden="true">${selected?'*':''}</span></div><div class="meal-segment" role="group" aria-label="${slot}餐时">${['餐前','餐后'].map(meal=>button(meal,'meal',setting.meal===meal?'is-selected':'',`data-slot="${slot}" data-meal="${meal}" aria-pressed="${setting.meal===meal}" ${selected?'':'disabled'}`)).join('')}</div></div>`;}).join('')}</div><p id="frequency" class="helper-text">每天 ${d.slots.length} 次，各时段单次用量相同</p></fieldset>`;
   }
   function timePicker() {
     const p=modal.picker; const [start,end]=R.RANGES[p.slot];
@@ -607,7 +780,7 @@
   }
 
   function newHealth(targetId, type=view.healthType) {
-    openModal('health-form',{targetId,healthType:type,draft:{values:{},extras:[],measuredAt:`${today()}T${data.demoTime}`,note:'',assisted:account().role==='child'}});
+    openModal('health-form',{targetId,healthType:type,draft:emptyHealth()});
   }
   function updatePicker() {
     const p=modal?.picker;if(!p)return;
@@ -626,24 +799,26 @@
   },true);
   app.addEventListener('input',event=>{
     const field=event.target;
+    if(modal?.type==='chat'&&field.name==='message'){const c=chatSession();if(c)c.input=field.value;return;}
     if(modal?.picker && ['hour','minute'].includes(field.name)) {
       modal.picker[field.name]=Number(field.value);
       const wheel=app.querySelector(`[data-wheel="${field.name}"]`);wheel.dataset.userScrolling='false';
       if(field.validity.valid)wheel.scrollTop=(Number(field.value)-Number(wheel.dataset.first))*44;
       return;
     }
-    if(modal?.type==='medicine' && field.closest('[data-form="medicine"]')) {
+    if((modal?.type==='medicine'||modal?.type==='chat') && field.closest('[data-form="medicine"],[data-form="chat-plan"]')) {
       modal.draft=collectMedicine(field.closest('form'));
+      const c=chatSession();if(c){c.plan=modal.draft;c.sources[field.name]='手动修改';c.plan.source=withSource(c.plan.source,'手动修改');}
       if(modal.errors) { reconcileMedicineErrors();paintErrors(); }
     }
-    if(modal?.type==='health-form' && field.closest('[data-form="health"]') && field.name!=='healthType') modal.draft=collectHealth(field.closest('form'));
+    if(modal?.type==='health-form' && field.closest('[data-form="health"]') && field.name!=='healthType'){modal.draft=collectHealth(field.closest('form'));syncChatDraft();}
   });
 
   function collectHealth(form) {
     const fd = new FormData(form);
     const values = {};
     TYPES[modal.healthType].fields.forEach(([key]) => { if (fd.get(key) !== '') values[key] = fd.get(key); });
-    return { values, measuredAt: fd.get('measuredAt'), note: String(fd.get('note') || '').trim(), assisted: fd.has('assisted'), extras: modal.draft.extras.map((_, i) => ({ name: String(fd.get(`extraName${i}`) || '').trim(), value: fd.get(`extraValue${i}`), unit: String(fd.get(`extraUnit${i}`) || '').trim() })) };
+    return { ...modal.draft,values, measuredAt: fd.get('measuredAt'), note: String(fd.get('note') || '').trim(), assisted: fd.has('assisted'), extras: modal.draft.extras.map((_, i) => ({ name: String(fd.get(`extraName${i}`) || '').trim(), value: fd.get(`extraValue${i}`), unit: String(fd.get(`extraUnit${i}`) || '').trim() })) };
   }
 
   function healthReview() {
@@ -670,12 +845,14 @@
 
   function recordDose(eventId, status, options = {}) {
     const context=modal?.type==='focus'?clone(modal):modal?.focusContext;
+    const chatKey=chatSession()?.key;
+    if(chatKey&&!options.inputSource)options={...options,inputSource:'助手卡片本人确认'};
     let operation;
     if (!commit(next => { operation = R.recordDose(next, view.accountId, eventId, status, options); })) return false;
     clearTimeout(undoTimer);
     undo = { ...operation, accountId: view.accountId, expires: Date.now() + 5000 };
     undoTimer = setTimeout(() => { undo = null; }, 5000);
-    advanceFocus(context,eventId);
+    if(chatKey)chatSaved(chatKey,`已将这次记录为“${STATUS[status]}”，可以在5秒内撤销。`,eventId);else advanceFocus(context,eventId);
     toast(`已记录为“${STATUS[status]}”。`, 'success', true);
     return true;
   }
@@ -708,7 +885,8 @@
     const form = event.target;
     if (!form.dataset.form) return;
     event.preventDefault();
-    if (form.dataset.form !== 'medicine' && !form.reportValidity()) return;
+    if(form.dataset.form==='chat'){sendChat();return;}
+    if (!['medicine','chat-plan'].includes(form.dataset.form) && !form.reportValidity()) return;
     const fd = new FormData(form);
     if (form.dataset.form === 'time-picker' && modal?.picker) {
       const hour=Number(fd.get('hour')),minute=Number(fd.get('minute'));
@@ -723,15 +901,17 @@
       if (!commit(next => { R.setClock(next, Number(fd.get('dateOffset')), time); })) return;
       closeModal(false); render(); return;
     }
-    if (form.dataset.form === 'medicine') {
+    if (['medicine','chat-plan'].includes(form.dataset.form)) {
       const draft = collectMedicine(form);
       modal.draft = draft;
-      modal.errors=R.planErrors(draft);
+      const c=chatSession();if(c)c.plan=draft;
+      modal.errors=c?chatPlanProblems(c):R.planErrors(draft);
       if (Object.keys(modal.errors).length) { modal.errorLayer=true;renderModal();return; }
       modal.type = 'medicine-confirm'; renderModal(); return;
     }
     if (form.dataset.form === 'health') {
       const draft = collectHealth(form);
+      if(chatSession()?.healthIssues?.length)return formError(`${chatSession().healthIssues.join(' ')}请补充包含明确单位的新输入再核对。`);
       if (!Object.keys(draft.values).length && !draft.extras.length) return formError('请至少填写一项测量值。');
       if ([...Object.values(draft.values), ...draft.extras.map(e => e.value)].some(v => v === '' || !Number.isFinite(Number(v)) || Number(v) < 0)) return formError('测量值必须是非负数字。');
       if (modal.healthType==='body' && ['height','weight'].some(k=>draft.values[k]!=null && !(Number(draft.values[k])>0))) return formError('身高和体重必须大于 0，并按标注单位填写。');
@@ -740,7 +920,7 @@
       if (draft.extras.some(e => !e.name || !e.unit)) return formError('请填写附加指标的名称和单位。');
       const names = [...TYPES[modal.healthType].fields.map(([, label]) => label), ...draft.extras.map(e => e.name)];
       if (new Set(names).size !== names.length) return formError('指标名称不能重复。');
-      modal.draft = draft; modal.type = 'health-confirm'; renderModal(); return;
+      modal.draft = draft;syncChatDraft();modal.type = 'health-confirm'; renderModal(); return;
     }
     if (form.dataset.form === 'onboarding') {
       const d = modal.draft;
@@ -764,9 +944,11 @@
     if(field.dataset.noticeOption)return applyDemoOptions({[field.dataset.noticeOption]:field.checked});
     if (field.id === 'history-date' && field.value) { view.historyDate = field.value; render(); return; }
     if (!modal) return;
+    if(field.hasAttribute('data-chat-example')){const c=chatSession();if(c)c.example=field.value;return;}
     if (modal.picker) return;
-    if (modal.type === 'medicine' && field.closest('form')) {
+    if (['medicine','chat'].includes(modal.type) && field.closest('[data-form="medicine"],[data-form="chat-plan"]')) {
       modal.draft = collectMedicine(field.closest('form'));
+      const c=chatSession();if(c){c.plan=modal.draft;c.sources[field.name]='点选／手动';c.plan.source=withSource(c.plan.source,'手动修改');if(field.name==='slots')c.pendingSlots=null;}
       reconcileMedicineErrors();paintErrors();
       if (field.name === 'slots') {
         const slot=field.value;renderModal();app.querySelector(`[name="slots"][value="${slot}"]`)?.focus({preventScroll:true});
@@ -775,7 +957,7 @@
     }
     if (modal.type === 'health-form' && field.name === 'healthType') {
       modal.healthType = Object.keys(TYPES).find(key => TYPES[key].name === field.value);
-      modal.draft = { values: {}, extras: [], measuredAt: `${today()}T${data.demoTime}`, note: '' }; renderModal();
+      modal.draft = { ...emptyHealth(),source:modal.draft.source };syncChatDraft();renderModal();
     }
     if (modal.type === 'onboarding' && field.name === 'familyMode') { modal.draft.familyMode = field.value; renderModal(); }
   });
@@ -786,6 +968,20 @@
     const action = target.dataset.action;
     const value = target.dataset.value;
     const itemId = target.dataset.id;
+    if(['assistant','voice-experience'].includes(action)&&suppressLongClick){suppressLongClick=false;event.preventDefault();return;}
+    if(action==='assistant')return openChat('home','text');
+    if(action==='chat-mode'){const c=chatSession();if(c){c.mode=target.dataset.mode;renderModal();}return;}
+    if(action==='chat-profile'){preserveDraft();return openModal('profiles');}
+    if(action==='chat-intent'){const c=chatSession();if(c){chatIntent(c,target.dataset.intent);renderModal();}return;}
+    if(action==='chat-task'){const c=chatSession(),e=data.doseEvents.find(e=>e.id===itemId);if(c&&e&&e.profileId===c.targetId&&canAccess(e.profileId)){c.selectedId=itemId;c.cards=[];c.ambiguous=false;chatMessage(c,`已选择 ${e.snapshot.name} · ${e.date} ${e.slot}，计划 ${e.snapshot.doseValue} ${e.snapshot.doseUnit}，提醒 ${e.scheduledTime}。请按实际情况操作。`);renderModal();}return;}
+    if(action==='chat-confirm-slots'){const c=chatSession();if(c){c.plan.slots=['早餐','晚餐'];c.pendingSlots=null;c.sources.slots='用户点选确认';chatMessage(c,chatPlanQuestion(c));renderModal();}return;}
+    if(action==='chat-form-plan')return chatOpenForm('plan');
+    if(action==='chat-form-health')return chatOpenForm('health');
+    if(action==='chat-view'){preserveDraft();return navigate(target.dataset.page);}
+    if(action==='chat-dismiss-followup'){const c=chatSession();if(c){c.selectedId=null;c.followup=false;chatMessage(c,'这项暂不处理，刚保存的记录不受影响。');renderModal();}return;}
+    if(action==='voice-experience')return previewVoice();
+    if(action==='voice-cancel'){const c=chatSession();if(c){c.input=c.beforePreview||'';c.preview=null;c.status='已取消';renderModal();}return;}
+    if(action==='chat-clear'){const c=chatSession();if(c){c.input='';c.preview=null;c.status='等待输入';renderModal();app.querySelector('#chat-input')?.focus();}return;}
     if (action === 'navigate') return navigate(target.dataset.page);
     if(action==='resume-draft')return resumeDraft();
     if(action==='open-notice') {
@@ -821,44 +1017,47 @@
       return kind==='medicine'?newMedicine(pid):newHealth(pid);
     }
     if (action==='change-target' && account().role==='child') return openModal('target',{returnModal:clone(modal)});
-    if (action==='select-target' && canAccess(itemId) && modal?.returnModal) { const previous=modal.returnModal;openModal(previous.type,{...previous,targetId:itemId});return; }
+    if (action==='select-target' && canAccess(itemId) && modal?.returnModal) { const previous=modal.returnModal;selectTargetForChild(itemId);openModal(previous.type,{...previous,targetId:itemId});return; }
     if (action === 'med-mode' && modal?.type === 'medicine' && value==='manual') { modal.mode = value; renderModal(); return; }
+    if (action === 'med-mode' && modal?.type === 'medicine' && value==='voice') return openChat('plan','voice');
     if (action === 'edit-med' && modal?.type === 'medicine-confirm') { modal.type = 'medicine'; renderModal(); return; }
     if (action === 'save-med' && modal?.type === 'medicine-confirm' && canAccess(modal.targetId)) {
       const d = modal.draft; const pid = modal.targetId;
-      const editing = modal.planId;
-      if (commit(next => { R.savePlan(next, view.accountId, { ...d, source: d.assisted ? '手动输入 · 家属协助' : '手动输入' }, pid, editing); })) { clearSavedDraft();view.planTab = 'active'; selectTargetForChild(pid); navigate('plans'); toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
+      const editing = chatSession()?.planId||modal.planId;
+      const c=chatSession();if(c&&Object.keys(chatPlanProblems(c)).length)return toast('草稿仍有未解决的信息，请返回修改。','warning');
+      if (commit(next => { R.savePlan(next, view.accountId, { ...d, source: `${d.source||'手动输入'}${d.assisted?' · 家属协助':''}` }, pid, editing); })) { clearSavedDraft();view.planTab = 'active';selectTargetForChild(pid);if(c){c.plan=emptyPlan();c.planId=null;c.expectedTimes=null;c.pendingSlots=null;c.blocked='';chatSaved(c.key,`${d.name}计划已${editing?'修改':'创建'}，仅生成适用任务，尚未声明服药。`);}else navigate('plans');toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
     }
     if (action === 'edit-health' && modal?.type === 'health-confirm') { modal.type = 'health-form'; renderModal(); return; }
     if (action === 'save-health' && modal?.type === 'health-confirm' && canAccess(modal.targetId)) {
       const d = modal.draft; const pid = modal.targetId; const type = modal.healthType;
-      if (commit(next => next.healthRecords.push({ id: id('health'), profileId: pid, type, values: Object.fromEntries(Object.entries(d.values).map(([k, v]) => [k, Number(v)])), extras: d.extras.map(e => ({ ...e, value: Number(e.value) })), measuredAt: d.measuredAt.replace('T', ' '), note: d.note, source: d.assisted ? '手动输入 · 家属协助' : '手动输入', assisted: d.assisted, createdBy: view.accountId, createdAt: new Date().toISOString() }))) { clearSavedDraft();view.healthType = type; selectTargetForChild(pid); navigate('health'); toast('测量记录已保存。'); } return;
+      const c=chatSession();
+      if (commit(next => next.healthRecords.push({ id: id('health'), profileId: pid, type, values: Object.fromEntries(Object.entries(d.values).map(([k, v]) => [k, Number(v)])), extras: d.extras.map(e => ({ ...e, value: Number(e.value) })), measuredAt: d.measuredAt.replace('T', ' '), note: d.note, source: `${d.source||'手动输入'}${d.assisted?' · 家属协助':''}`, assisted: d.assisted, createdBy: view.accountId, createdAt: now() }))) { clearSavedDraft();view.healthType = type;selectTargetForChild(pid);if(c){c.health=emptyHealth();chatSaved(c.key,`${TYPES[type].name}测量记录已保存，首页和身体数据已更新。`);}else navigate('health');toast('测量记录已保存。'); } return;
     }
     if (['add-extra', 'remove-extra'].includes(action) && modal?.type === 'health-form') {
       modal.draft = collectHealth(document.querySelector('[data-form="health"]'));
       if (action === 'add-extra' && modal.draft.extras.length < 8) modal.draft.extras.push({ name: '', value: '', unit: '' });
       if (action === 'remove-extra') modal.draft.extras.splice(Number(target.dataset.index), 1);
-      renderModal(); return;
+      syncChatDraft();renderModal(); return;
     }
     if (action === 'take') return recordDose(itemId, 'taken');
     if (action === 'declare' && target.dataset.status === 'not_taken') return recordDose(itemId, 'not_taken');
     if (['task-detail', 'correct-dose'].includes(action)) {
       const e = data.doseEvents.find(e => e.id === itemId);
-      if (e && canAccess(e.profileId) && (action !== 'correct-dose' || account().role === 'elder')) openModal(action, { eventId: itemId });
+      if (e && canAccess(e.profileId) && (action !== 'correct-dose' || account().role === 'elder')) openModal(action, { eventId: itemId,chatKey:chatSession()?.key,targetId:e.profileId });
       return;
     }
-    if (action === 'choose-correction' && modal?.type === 'correct-dose' && account().role === 'elder') return openModal('dose-confirm', { eventId: modal.eventId, status: target.dataset.status, correction: true });
+    if (action === 'choose-correction' && modal?.type === 'correct-dose' && account().role === 'elder') return openModal('dose-confirm', { eventId: modal.eventId, status: target.dataset.status, correction: true,chatKey:modal.chatKey });
     if (action === 'snooze') {
       const context=modal?.type==='focus'?clone(modal):null;
-      if (commit(next => { R.snooze(next, view.accountId, itemId, Number(target.dataset.minutes)); })) { advanceFocus(context,itemId); toast('已设置稍后提醒，原任务与服药事实不变。'); }
+      const c=chatSession();if (commit(next => { R.snooze(next, view.accountId, itemId, Number(target.dataset.minutes)); })) {if(c){chatMessage(c,`已设置稍后提醒至 ${displayTime(data.doseEvents.find(e=>e.id===itemId).snoozeUntil)}。原时段和服药事实不变。${data.simulationMode==='offline'?'本机已保存，家属侧待同步（模拟）。':''}`);render();}else advanceFocus(context,itemId);toast('已设置稍后提醒，原任务与服药事实不变。'); }
       return;
     }
     if (action === 'dose-confirm') {
       const e = data.doseEvents.find(e => e.id === itemId);
-      if (e && R.canDeclare(data, view.accountId, e) && !resolved(e) && target.dataset.status === 'skipped') openModal('dose-confirm', { eventId: itemId, status: 'skipped',focusContext:modal?.type==='focus'?clone(modal):null });
+      if (e && R.canDeclare(data, view.accountId, e) && !resolved(e) && target.dataset.status === 'skipped') openModal('dose-confirm', { eventId: itemId, status: 'skipped',focusContext:modal?.type==='focus'?clone(modal):null,chatKey:chatSession()?.key });
       return;
     }
-    if (action === 'confirm-dose' && modal?.type === 'dose-confirm') return recordDose(modal.eventId, modal.status, { correction: !!modal.correction });
+    if (action === 'confirm-dose' && modal?.type === 'dose-confirm') return recordDose(modal.eventId, modal.status, { correction: !!modal.correction,actual:modal.actual||null,inputSource:chatSession()?'助手内本人确认':'手动' });
     if (action === 'undo' && undo && Date.now() <= undo.expires && undo.accountId === view.accountId) {
       const saved = undo;
       if (commit(next => { R.undoDose(next, view.accountId, saved); })) { undo = null; render(); toast('本次打卡已撤销，延后次数和提醒冷却不变。'); } return;
@@ -899,7 +1098,7 @@
     }
     if (action === 'confirm-reset' && modal?.type === 'reset') {
       try { localStorage.removeItem(DATA_KEY); invalidStorage = false; storageWarning = ''; } catch { storageWarning = '无法清除浏览器存档，本次仅恢复临时演示数据。'; }
-      drafts.clear();sessionViews.clear();dismissedFocus.clear();shownBanners.clear();visitId=id('visit');
+      drafts.clear();sessionViews.clear();conversations.clear();dismissedFocus.clear();shownBanners.clear();visitId=id('visit');
       data = seed(); view = { accountId: 'elder-zhang', page: 'home', healthType: 'blood_pressure', planTab: 'active', historyDate: DAY }; undo = null; overdueOpen = false;commit(()=>{});navigate('home');publishState();toast('已恢复初始演示数据。');
     }
   });

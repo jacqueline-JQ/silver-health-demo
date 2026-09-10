@@ -1,5 +1,5 @@
-async page => {
-  const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>dialog.accept());
+async (page,{handleDialogs=true,artifactDir='output/playwright/step-03'}={}) => {
+  const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));if(handleDialogs)page.on('dialog',dialog=>dialog.accept());
   const ok=(condition,label)=>{if(!condition)throw Error(label);checks.push(label);};
   try {
   await page.goto('http://127.0.0.1:8765/index.html');await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.goto('http://127.0.0.1:8765/demo.html');
@@ -74,7 +74,7 @@ async page => {
     await page.setViewportSize({width,height:1000});await show();if(await frame.getByRole('dialog').count())await click('close-modal');await nav('me');await frame.locator(`[data-action="font"][data-value="${font}"]`).click();await nav('home');
     ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`舞台无横向溢出 ${width}/${font}`);
     ok(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`内层无横向溢出 ${width}/${font}`);
-    await page.screenshot({path:`output/playwright/step-03/app-${width}-${font}.png`,animations:'disabled'});await desktop();await page.screenshot({path:`output/playwright/step-03/desktop-${width}-${font}.png`,animations:'disabled'});
+    await page.screenshot({path:`${artifactDir}/app-${width}-${font}.png`,animations:'disabled'});await desktop();await page.screenshot({path:`${artifactDir}/desktop-${width}-${font}.png`,animations:'disabled'});
   }
   await page.emulateMedia({reducedMotion:'reduce'});await show();ok(await page.locator('#app-container').evaluate(el=>getComputedStyle(el).transform)==='none','减少动态效果取消空间移动');await page.emulateMedia({reducedMotion:'no-preference'});
   await page.locator('#open-app').click();await page.locator('#show-desktop').click();await page.locator('#open-app').click();ok(await frame.evaluate(()=>window.__instanceMarker)==='same-instance','快速开关不重建iframe');
