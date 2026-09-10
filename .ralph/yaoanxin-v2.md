@@ -18,3 +18,17 @@
 
 ## Final Verification
 第5步最终证据：output/playwright/step-05/；82项映射、检查名称及复现命令：output/验收/验收台账.md和JSON；统计重建：python3 tests/build-acceptance-ledger.py。701项浏览器/37组规则全部通过；未做真人读屏或真实服务验证，范围见output/验收/验证总览.md。
+
+### 循环收尾的可复现核验
+
+- 工作目录：`/Users/jacqueline/Documents/projects/复客松_20260913`。
+- 在该目录的新Shell中执行：
+
+  ```bash
+  node tests/rules.test.cjs && node tests/notifications.test.cjs && node tests/conversation.test.cjs && python3 tests/build-acceptance-ledger.py
+  ```
+
+- 环境：PATH中可用Node和Python 3；无需额外环境变量、网络或浏览器服务。此命令重新运行37组纯规则，并检查已保留的浏览器证据；不代表重新运行701项浏览器检查。
+- 必须保留：`rules.js`、`conversation.js`、`seed-data.js`、上述测试/台账脚本，以及`output/playwright/step-05/`内15份浏览器结果JSON和三份规则日志；它们均已纳入Git。
+- 通过结果：规则13组、通知9组、解析15组；台账输出`items:82, browserChecks:701, ruleGroups:37, resultFiles:15`。
+- 应用交付版本保持`ac5f25d` / `mvp-v2-step-05-fix-01`；本次只补齐循环收尾记录，保留原五步及补交标签，不推送远端。
