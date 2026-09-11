@@ -154,4 +154,115 @@ test('旧通知仅凭真实发送证据迁移且不以当前授权否定历史',
   }
 });
 
+test('延后保护结束覆盖提前前、提前窗内和截止后三个分支', () => {
+  let data, event;
+  ({ data, event } = setup());
+  R.setClock(data, 0, '08:00');R.snooze(data, 'elder-zhang', event.id, 30);R.setClock(data, 0, '08:30');R.evaluateNotifications(data);
+  assert.equal(n2For(data, event, 'early').length, 0);
+  R.setClock(data, 0, '09:00');R.evaluateNotifications(data);assert.equal(n2For(data, event, 'early').length, 2);
+
+  ({ data, event } = setup());
+  R.setClock(data, 0, '08:50');R.snooze(data, 'elder-zhang', event.id, 30);R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  assert.equal(n2For(data, event, 'early').length, 0);
+  R.setClock(data, 0, '09:20');R.evaluateNotifications(data);assert.equal(n2For(data, event, 'early').length, 2);
+
+  ({ data, event } = setup());
+  R.setClock(data, 0, '10:50');R.snooze(data, 'elder-zhang', event.id, 30);R.setClock(data, 0, '11:00');R.evaluateNotifications(data);
+  assert.equal(n2For(data, event, 'early').length+n2For(data, event, 'deadline').length, 0);
+  R.setClock(data, 0, '11:20');R.evaluateNotifications(data);
+  assert.equal(n2For(data, event, 'early').length, 0);
+  assert.equal(n2For(data, event, 'deadline').length, 2);
+  assert(R.validData(data));
+});
+
+test('离线提前轮跨过截止后终止并以原 ID 送达截止轮', () => {
+  const { data, event } = setup();
+  data.simulationMode = 'offline';
+  R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  const early = n2For(data, event, 'early'),earlyIds = early.map(notice => notice.id).sort();
+  assert(early.every(notice => notice.deliveryState === 'pending' && notice.deliveryAttempts === 0 && notice.sentAt === null && notice.deliveredAt === null));
+  R.setClock(data, 0, '11:00');R.evaluateNotifications(data);
+  assert(early.every(notice => notice.deliveryState === 'suppressed'));
+  const deadline = n2For(data, event, 'deadline'),deadlineIds = deadline.map(notice => notice.id).sort();
+  assert(deadline.every(notice => notice.deliveryState === 'pending' && notice.deliveryAttempts === 0));
+  data.simulationMode = 'online';R.retryNotifications(data);
+  assert(deadline.every(notice => notice.deliveryState === 'delivered' && notice.deliveryAttempts === 1 && notice.sentAt === R.now(data) && notice.deliveredAt === R.now(data)));
+  assert.deepEqual(n2For(data, event, 'early').map(notice => notice.id).sort(), earlyIds);
+  assert.deepEqual(n2For(data, event, 'deadline').map(notice => notice.id).sort(), deadlineIds);
+  assert.equal(R.evaluateNotifications(data).length, 0);
+  assert(R.validData(data));
+});
+
+test('临时保护保持排队且保护结束后复用原通知 ID', () => {
+  const { data, event } = setup();
+  data.simulationMode = 'offline';R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  const queued = n2For(data, event, 'early'),ids = queued.map(notice => notice.id).sort();
+  R.snooze(data, 'elder-zhang', event.id, 30);data.simulationMode = 'online';R.retryNotifications(data);
+  assert(queued.every(notice => notice.deliveryState === 'pending' && notice.deliveryAttempts === 0));
+  R.setClock(data, 0, '09:29');R.retryNotifications(data);assert(queued.every(notice => notice.deliveryState === 'pending'));
+  R.setClock(data, 0, '09:30');R.retryNotifications(data);
+  assert(queued.every(notice => notice.deliveryState === 'delivered' && notice.deliveryAttempts === 1));
+  assert.deepEqual(n2For(data, event, 'early').map(notice => notice.id).sort(), ids);
+  assert(R.validData(data));
+});
+
+test('撤权只抑制目标接收人且其他人与新授权人继续', () => {
+  const { data, event } = setup();
+  data.simulationMode = 'offline';R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  const elder = n2For(data, event, 'early').find(notice => notice.recipientId === 'elder-zhang');
+  const revoked = n2For(data, event, 'early').find(notice => notice.recipientId === 'child-li');
+  data.accounts.find(account => account.id === 'child-li').boundProfileIds = [];
+  addChild(data, 'child-new', '新授权家属');
+  data.simulationMode = 'online';R.retryNotifications(data);R.evaluateNotifications(data);
+  const added = n2For(data, event, 'early').find(notice => notice.recipientId === 'child-new');
+  assert.equal(revoked.deliveryState, 'suppressed');
+  assert.equal(elder.deliveryState, 'delivered');
+  assert.equal(added.deliveryState, 'delivered');
+  assert.equal(new Set(n2For(data, event, 'early').map(notice => `${notice.receiverId}|${notice.warningRound}`)).size, 3);
+  assert(R.validData(data));
+});
+
+test('完成或取消发生在排队后会终止原通知且不新增轮次', () => {
+  let data, event;
+  ({ data, event } = setup());data.simulationMode = 'offline';R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  R.recordDose(data, 'elder-zhang', event.id, 'taken');R.syncSimulation(data);R.evaluateNotifications(data);
+  assert(n2For(data, event, 'early').every(notice => notice.deliveryState === 'suppressed'));
+  assert.equal(n2For(data, event, 'deadline').length, 0);
+
+  ({ data, event } = setup());data.simulationMode = 'offline';R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  event.cancelledAt = R.now(data);data.simulationMode = 'online';R.retryNotifications(data);R.evaluateNotifications(data);
+  assert(n2For(data, event, 'early').every(notice => notice.deliveryState === 'suppressed'));
+  assert.equal(n2For(data, event, 'deadline').length, 0);
+  assert(R.validData(data));
+});
+
+test('失败重试保留通知 ID 并只追加送达元数据', () => {
+  const { data, event } = setup();
+  data.simulationMode = 'failure';R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  const failed = n2For(data, event, 'early'),ids = failed.map(notice => notice.id).sort();
+  assert(failed.every(notice => notice.deliveryState === 'failed' && notice.deliveryAttempts === 1 && notice.sentAt === null && notice.deliveredAt === null));
+  data.simulationMode = 'online';R.retryNotifications(data);
+  assert(failed.every(notice => notice.deliveryState === 'delivered' && notice.deliveryAttempts === 2 && notice.sentAt === R.now(data)));
+  R.retryNotifications(data);R.evaluateNotifications(data);
+  assert.deepEqual(n2For(data, event, 'early').map(notice => notice.id).sort(), ids);
+  assert(failed.every(notice => notice.deliveryAttempts === 2));
+  assert(R.validData(data));
+});
+
+test('旧截止轮按签名和时刻确定性选择，未知与延后轮保留 legacy', () => {
+  const raw = fixture('mvp-v3-v2-minimal.json'),original = raw.notificationLogs[0];
+  const duplicate = R.clone(original);duplicate.id = 'fixture-old-n2-duplicate';duplicate.operationId = 'duplicate';
+  const unknown = R.clone(original);unknown.id = 'fixture-old-n2-unknown';unknown.operationId = 'unknown';unknown.round = 'snooze-2026-09-13T11:05:00+08:00';
+  const migrateOrder = logs => {const source=fixture('mvp-v3-v2-minimal.json');source.notificationLogs=logs;return R.migrate(source);};
+  const first = migrateOrder([unknown, duplicate, original]);
+  const second = migrateOrder([original, unknown, duplicate]);
+  for (const migrated of [first, second]) {
+    assert.equal(migrated.notificationLogs.find(notice => notice.legacy !== true).id, 'fixture-old-n2');
+    assert.equal(migrated.notificationLogs.find(notice => notice.id === duplicate.id).legacy, true);
+    assert.equal(migrated.notificationLogs.find(notice => notice.id === unknown.id).legacy, true);
+    assert.equal(migrated.notificationLogs.find(notice => notice.id === unknown.id).legacyRecord.round, unknown.round);
+    assert(R.validData(migrated));
+  }
+});
+
 console.log(`PASS ${count} stage-1 notification groups`);
