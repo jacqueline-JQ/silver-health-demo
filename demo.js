@@ -2,7 +2,7 @@
 (() => {
   const $=id=>document.getElementById(id),frame=$('app-frame'),container=$('app-container'),phone=$('phone');
   const CHANNEL='yaoanxin-demo',VERSION=1,ORIGIN=location.origin;
-  const pending=new Map(),queue=[];let ready=false,connected=false,themePending='',os='ios',snapshot=null,currentNotice=null,desiredVisible=false,sequence=0;
+  const pending=new Map(),queue=[],dirtyControls=new Set();let ready=false,connected=false,themePending='',os='ios',snapshot=null,currentNotice=null,desiredVisible=false,sequence=0;
   const rid=()=>`demo-${Date.now().toString(36)}-${++sequence}`;
   const feedback=(text,error=false)=>{$('control-feedback').textContent=text;$('control-feedback').classList.toggle('is-error',error);};
   function request(type,payload={}) {
@@ -41,7 +41,7 @@
   }
   function updateStatus() {if(snapshot)$('ready-status').textContent=`${ready?'已就绪':'同步主题中'} · ${snapshot.account.name} · ${snapshot.account.role==='elder'?'长辈端':'子女端'}`;}
   function paintDesktopTime(){if(!snapshot)return;$('desktop-time').textContent=os==='android'?snapshot.time.replace(':','\n'):snapshot.time;$('desktop-time').setAttribute('aria-label',`演示时间 ${snapshot.time}`);}
-  function setValue(id,value) {if(document.activeElement!==$(id))$(id).value=value;}
+  function setValue(id,value) {if(document.activeElement!==$(id)&&!dirtyControls.has(id))$(id).value=value;}
   function options(id,items,selected) {
     const select=$(id),signature=JSON.stringify(items);
     if(select.dataset.signature!==signature) {select.replaceChildren(...items.map(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;return option;}));select.dataset.signature=signature;}
@@ -99,8 +99,9 @@
   $('launch-service').addEventListener('click',()=>showApp(true));
   $('banner-close').addEventListener('click',hideBanner);$('banner-open').addEventListener('click',()=>openNotice(currentNotice));
   $('account-select').addEventListener('change',event=>send('SWITCH_ACCOUNT',{accountId:event.target.value}));$('profile-select').addEventListener('change',event=>send('SWITCH_PROFILE',{profileId:event.target.value}));
-  $('apply-clock').addEventListener('click',()=>{if(!$('day-offset').reportValidity()||!$('clock-time').reportValidity())return;send('CLOCK',{dateOffset:Number($('day-offset').value),time:$('clock-time').value});});
-  document.querySelectorAll('[data-clock]').forEach(button=>{button.addEventListener('click',()=>send('CLOCK',{dateOffset:Number(button.dataset.offset||0),time:button.dataset.clock}));});
+  for(const id of ['day-offset','clock-time'])$(id).addEventListener('input',()=>dirtyControls.add(id));
+  $('apply-clock').addEventListener('click',async()=>{if(!$('day-offset').reportValidity()||!$('clock-time').reportValidity())return;const result=await send('CLOCK',{dateOffset:Number($('day-offset').value),time:$('clock-time').value});if(result.ok)for(const id of ['day-offset','clock-time'])dirtyControls.delete(id);});
+  document.querySelectorAll('[data-clock]').forEach(button=>{button.addEventListener('click',()=>{dirtyControls.delete('day-offset');dirtyControls.delete('clock-time');send('CLOCK',{dateOffset:Number(button.dataset.offset||0),time:button.dataset.clock});});});
   document.querySelectorAll('[data-scene]').forEach(button=>{button.addEventListener('click',async()=>{const result=await send('SCENE',{kind:button.dataset.scene});if(result.ok&&button.dataset.scene==='N3')showApp(true);});});
   document.querySelectorAll('.system-picker [data-os]').forEach(button=>{button.addEventListener('click',()=>applyTheme(button.dataset.os));});
   $('replay-notice').addEventListener('click',()=>{const n=selectedNotice();if(n){showBanner(n);feedback('仅重播横幅外观，不新增逻辑通知');}else feedback('当前账号暂无通知',true);});$('open-notice').addEventListener('click',()=>openNotice(selectedNotice()));

@@ -279,6 +279,10 @@
     const deliveryState=d.simulationMode==='failure'?'failed':queued?'pending':'delivered';
     const noticeId=id('notice'),createdAt=now(d);
     const n={id:noticeId,kind,eventId:e.id,profileId:e.profileId,date:e.date,recipientId,fromAccountId,operationId,round,title,text,shortText:'您有一条用药记录提醒',createdAt,deliveryState,deliveryAttempts:deliveryState==='pending'?0:1,deliveredAt:deliveryState==='delivered'?createdAt:null,simulated:true,...(kind==='N2'?{warningRound,receiverId:recipientId,notificationId:noticeId,sentAt:deliveryState==='delivered'?createdAt:null}:{})};
+    if(kind==='N2') {
+      const decision=deliveryDecision(d,n,e);
+      if(decision!=='deliver') {n.deliveryState=decision==='suppress'?'suppressed':'pending';n.deliveryAttempts=0;n.sentAt=null;n.deliveredAt=null;}
+    }
     d.notificationLogs.push(n);return n;
   }
   function deliveryDecision(d,n,e) {

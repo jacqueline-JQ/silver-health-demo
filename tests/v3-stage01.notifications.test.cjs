@@ -265,4 +265,27 @@ test('旧截止轮按签名和时刻确定性选择，未知与延后轮保留 l
   }
 });
 
+test('尚未建轮次时本机延后仍阻止恢复在线后的初次送达', () => {
+  const { data, event } = setup();
+  data.simulationMode = 'offline';R.setClock(data, 0, '08:50');R.snooze(data, 'elder-zhang', event.id, 30);
+  assert.equal(n2For(data, event, 'early').length, 0);
+  data.simulationMode = 'online';R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  const notices = n2For(data, event, 'early');
+  assert.equal(notices.length, 2);
+  assert(notices.every(notice => notice.deliveryState === 'pending' && notice.deliveryAttempts === 0 && notice.sentAt === null && notice.deliveredAt === null));
+  assert(R.validData(data));
+});
+
+test('尚未建轮次时本机已完成会把远端旧视图轮次直接终止', () => {
+  const { data, event } = setup();
+  data.simulationMode = 'offline';R.setClock(data, 0, '08:30');R.recordDose(data, 'elder-zhang', event.id, 'taken');
+  assert.equal(n2For(data, event, 'early').length, 0);
+  data.simulationMode = 'online';R.setClock(data, 0, '09:00');R.evaluateNotifications(data);
+  const notices = n2For(data, event, 'early');
+  assert.equal(notices.length, 2);
+  assert(notices.every(notice => notice.deliveryState === 'suppressed' && notice.deliveryAttempts === 0 && notice.sentAt === null && notice.deliveredAt === null));
+  assert.equal(event.status, 'taken');
+  assert(R.validData(data));
+});
+
 console.log(`PASS ${count} stage-1 notification groups`);
