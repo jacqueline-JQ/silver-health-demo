@@ -171,10 +171,10 @@
     const targetId=modal?.targetId||profile()?.id;if(!targetId||!canAccess(targetId))return toast('请先选择已绑定的长辈。','warning');
     const key=`${view.accountId}|${targetId}`,previous=modal;
     let c=chatSession(key);
-    if(!c){c={key,id:id('chat'),accountId:view.accountId,targetId,date:today(),entry,mode,intent:entry==='plan'?'plan':'home',messages:[],input:'',inputSource:'文字输入',plan:emptyPlan(),health:emptyHealth(),healthType:'blood_pressure',sources:{},cards:[],selectedId:null,status:'等待输入',example:'',preview:null,blocked:'',pendingSlots:null,expectedTimes:null};conversations.set(key,c);
+    if(!c){c={key,id:id('chat'),accountId:view.accountId,targetId,date:today(),entry,mode,intent:entry==='plan'?'plan':'home',messages:[],input:'',inputSource:'文字输入',plan:emptyPlan(),health:emptyHealth(),healthType:'blood_pressure',sources:{},cards:[],selectedId:null,status:'等待输入',example:'',preview:null,blocked:'',blockedKind:'',pendingSlots:null,expectedTimes:null};conversations.set(key,c);
       chatMessage(c,entry==='plan'?'我来帮您整理用药计划。请先告诉我药品名称、每次用量和单位；也可以一起说时段和提醒时间，或直接点配置卡。':account().role==='elder'?`${account().name}，您好。您可以记录是否吃过药、添加药品、记录身体数据，也可以查询今天的用药安排。`:`${account().name}，您好。当前查看${data.elderProfiles.find(p=>p.id===targetId).name}。您可以查询、协助添加计划和身体数据，或对合格任务提醒 TA。`);
     }
-    if(entry==='plan'){if(previous?.draft&&previous.type==='medicine'&&(previous.chatKey===key||previous.planId||!hasPlanInput(c.plan)||hasPlanInput(previous.draft))){if(c.planId!==previous.planId){c.blocked='';c.pendingSlots=null;c.expectedTimes=null;c.sources={};}c.plan=previous.draft;c.planId=previous.planId;}if(c.intent!=='plan'){chatMessage(c,'继续整理用药计划，已经填写的内容保留。');c.intent='plan';}}
+    if(entry==='plan'){if(previous?.draft&&previous.type==='medicine'&&(previous.chatKey===key||previous.planId||!hasPlanInput(c.plan)||hasPlanInput(previous.draft))){if(c.planId!==previous.planId){c.blocked='';c.blockedKind='';c.pendingSlots=null;c.expectedTimes=null;c.sources={};}c.plan=previous.draft;c.planId=previous.planId;}if(c.intent!=='plan'){chatMessage(c,'继续整理用药计划，已经填写的内容保留。');c.intent='plan';}}
     c.mode=mode;openModal('chat',{targetId,chatKey:key,planId:c.planId});
   }
   function returnChat(key) {
@@ -238,7 +238,8 @@
     if(account().role==='child'&&['record','makeup','snooze','correct'].includes(inferred)){c.cards=[];c.selectedId=null;c.status='无权限';chatMessage(c,'只有长辈本人可以声明、补记、更正或延后。文字、示例语音和任务卡都遵守同一权限。');return;}
     if(inferred==='plan') {
       c.intent='plan';c.cards=[];c.selectedId=null;const result=C.parsePlan(text,c.plan);c.plan=result.draft;
-      if(result.blocked)c.blocked=result.issues[0];else if(result.resolveBlocked)c.blocked='';
+      if(result.blocked){c.blocked=result.issues[0];c.blockedKind=result.blockKind||'schedule';}
+      else if(result.resolveBlocked||result.resolvedKinds?.includes(c.blockedKind)){c.blocked='';c.blockedKind='';}
       if(result.pendingSlots)c.pendingSlots=result.pendingSlots;
       if(result.expectedTimes!==undefined)c.expectedTimes=result.expectedTimes;
       if(result.changed.includes('slots'))c.pendingSlots=null;
@@ -823,7 +824,7 @@
     }
     if((modal?.type==='medicine'||modal?.type==='chat') && field.closest('[data-form="medicine"],[data-form="chat-plan"]')) {
       modal.draft=collectMedicine(field.closest('form'));
-      const c=chatSession();if(c){c.plan=modal.draft;c.sources[field.name]='手动修改';c.plan.source=withSource(c.plan.source,'手动修改');}
+      const c=chatSession();if(c){c.plan=modal.draft;c.sources[field.name]='手动修改';c.plan.source=withSource(c.plan.source,'手动修改');if(c.blockedKind==='dose'&&['doseValue','doseUnit'].includes(field.name)){c.blocked='';c.blockedKind='';}}
       if(modal.errors) { reconcileMedicineErrors();paintErrors(); }
     }
     if(modal?.type==='health-form' && field.closest('[data-form="health"]') && field.name!=='healthType'){
@@ -1027,7 +1028,7 @@
       const setting=modal.draft.slotSettings[target.dataset.slot];modal.picker={slot:target.dataset.slot,hour:Number(setting.time.slice(0,2)),minute:Number(setting.time.slice(3))};renderModal();app.querySelector(`#picker-${target.dataset.part}`)?.focus({preventScroll:true});return;
     }
     if (action === 'meal' && modal?.draft?.slots.includes(target.dataset.slot)) {
-      const setting=modal.draft.slotSettings[target.dataset.slot];setting.meal=setting.meal===target.dataset.meal?'':target.dataset.meal;reconcileMedicineErrors();renderModal();return;
+      const setting=modal.draft.slotSettings[target.dataset.slot];setting.meal=setting.meal===target.dataset.meal?'':target.dataset.meal;const c=chatSession();if(c?.blockedKind==='meal'){c.blocked='';c.blockedKind='';}reconcileMedicineErrors();renderModal();return;
     }
     if (action === 'close-modal') return closeModal();
     if (['accounts', 'clock', 'family', 'about', 'notifications', 'notification-settings', 'reset'].includes(action)) {preserveDraft();return openModal(action);}
@@ -1052,7 +1053,7 @@
       const d = modal.draft; const pid = modal.targetId;
       const editing = chatSession()?.planId||modal.planId;
       const c=chatSession();if(c&&Object.keys(chatPlanProblems(c)).length)return toast('草稿仍有未解决的信息，请返回修改。','warning');
-      if (commit(next => { R.savePlan(next, view.accountId, { ...d, source: `${d.source||'手动输入'}${d.assisted?' · 家属协助':''}` }, pid, editing); })) { clearSavedDraft();view.planTab = 'active';selectTargetForChild(pid);if(c){c.plan=emptyPlan();c.planId=null;c.expectedTimes=null;c.pendingSlots=null;c.blocked='';chatSaved(c.key,`${d.name}计划已${editing?'修改':'创建'}，仅生成适用任务，尚未声明服药。`);}else navigate('plans');toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
+      if (commit(next => { R.savePlan(next, view.accountId, { ...d, source: `${d.source||'手动输入'}${d.assisted?' · 家属协助':''}` }, pid, editing); })) { clearSavedDraft();view.planTab = 'active';selectTargetForChild(pid);if(c){c.plan=emptyPlan();c.planId=null;c.expectedTimes=null;c.pendingSlots=null;c.blocked='';c.blockedKind='';chatSaved(c.key,`${d.name}计划已${editing?'修改':'创建'}，仅生成适用任务，尚未声明服药。`);}else navigate('plans');toast(editing ? '未来计划已更新，已开始任务保留。' : '用药计划已创建。'); } return;
     }
     if (action === 'edit-health' && modal?.type === 'health-confirm') { modal.type = 'health-form'; renderModal(); return; }
     if (action === 'save-health' && modal?.type === 'health-confirm' && canAccess(modal.targetId)) {

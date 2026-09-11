@@ -7,6 +7,7 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
   const closeFocus=async()=>{if(await page.locator('#modal-root .focus-sheet').count())await click('close-modal');};
   const switchTo=async accountId=>{await click('accounts');await page.locator(`[data-action="switch-account"][data-id="${accountId}"]`).click();await closeFocus();};
   const assertHome=async label=>ok(await page.locator('.nav-item.is-active[data-page="home"]').count()===1&&await page.locator('#modal-root [role="dialog"]').count()===0,label);
+  const send=async text=>{await page.locator('#chat-input').fill(text);await page.locator('[data-form="chat"] button[type="submit"]').click();await page.waitForFunction(()=>!document.querySelector('.chat-status')?.textContent.includes('处理中'));};
 
   await page.goto(`${BASE_URL}/index.html`);await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();await closeFocus();
   await nav('me');await click('clock');await page.locator('[name="time"]').fill('06:00');await page.getByRole('button',{name:'确认时间',exact:true}).click();await nav('home');
@@ -33,6 +34,15 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
   ok(afterClose===beforeClose,'关闭提醒不写事实、不消耗延后且不新增通知');
   await page.reload();await page.locator('#modal-root .focus-sheet').waitFor();await page.locator('#modal-root [data-action="view-focus-task"]').click();
   ok(await page.locator('.nav-item.is-active[data-page="plans"]').count()===1&&await page.locator(`[data-task-id="${focusedId}"]`).count()===1,'只有查看对应任务命令定位记录列表');
-  await page.screenshot({path:`${artifactDir}/p0-02-focus-close.png`,animations:'disabled',fullPage:true});
-  ok(errors.length===0,'P0-01/P0-02 页面无脚本错误');return{passed:checks.length,checks,errors};
+  await nav('home');await click('assistant');await page.locator('[data-action="chat-intent"][data-intent="plan"]').click();
+  await send('药名是作用域测试药，每次1片，早餐，早餐餐后');ok(await page.locator('[name="doseValue"]').inputValue()==='1','助手建立剂量与餐时草稿');
+  await send('每次1片，不是2片');ok(await page.locator('[name="doseValue"]').inputValue()==='1','肯定剂量后的否定值不覆盖草稿');
+  await send('不是一片，是半片');ok(await page.locator('[name="doseValue"]').inputValue()==='0.5','否定后明确改口解析为半片');
+  await send('早餐不是饭后');ok(await page.locator('[data-action="meal"][data-slot="早餐"][data-meal="餐后"]').getAttribute('aria-pressed')==='true'&&await page.locator('.chat-conflict').count()===1,'孤立餐时否定保留原值并阻止核对');
+  await send('早餐改为餐前');ok(await page.locator('[data-action="meal"][data-slot="早餐"][data-meal="餐前"]').getAttribute('aria-pressed')==='true'&&await page.locator('.chat-conflict').count()===0,'明确餐时替换解除对应阻止');
+  await send('每次1片，每次2片');ok(await page.locator('[name="doseValue"]').inputValue()==='0.5'&&await page.locator('.chat-conflict').count()===1,'冲突最终剂量不污染原草稿');
+  await page.locator('[data-form="chat-plan"] button[type="submit"]').click();ok(await page.getByRole('alertdialog').count()===1,'剂量冲突保持核对阻止状态');await click('dismiss-errors');
+  await page.locator('[name="doseValue"]').fill('1');await page.locator('[data-form="chat-plan"] button[type="submit"]').click();ok(await page.getByRole('dialog').getByRole('heading',{name:'确认用药计划'}).count()===1,'手动明确剂量后可以进入核对');
+  await page.screenshot({path:`${artifactDir}/p0-03-conflict-block.png`,animations:'disabled',fullPage:true});
+  ok(errors.length===0,'P0-01 至 P0-03 页面无脚本错误');return{passed:checks.length,checks,errors};
 }

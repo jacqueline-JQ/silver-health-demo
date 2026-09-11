@@ -51,22 +51,48 @@
     }
     return {ambiguous:true};
   }
+  function doseUpdate(text) {
+    const mentions=[...text.matchAll(new RegExp(`(${NUM})\\s*(${UNIT})`,'g'))].map(match=>{
+      const prefix=text.slice(Math.max(0,match.index-16),match.index).replace(/\s/g,'');
+      const negated=/(?:不是|并非|不要|不为|并不是)$/.test(prefix);
+      const replacement=!negated&&/(?:改成|改为|调整为|设为|而是|是)$/.test(prefix);
+      const standalone=new RegExp(`^${NUM}${UNIT}[。！ ]*$`).test(text);
+      const base=!negated&&(/每次(?:吃|服用)?$/.test(prefix)||replacement||standalone);
+      return {value:number(match[1]),unit:match[2],negated,replacement,base};
+    });
+    if(!mentions.length)return null;
+    const candidates=mentions.filter(item=>item.base),replacements=candidates.filter(item=>item.replacement);
+    const pool=replacements.length?replacements:candidates;
+    if(!pool.length&&mentions.every(item=>item.negated))return {unresolved:true};
+    if(!pool.length)return null;
+    const unique=new Map(pool.map(item=>[`${item.value}|${item.unit}`,item]));
+    if(unique.size>1)return {conflict:true,candidates:[...unique.values()]};
+    return {candidate:[...unique.values()][0]};
+  }
   function parsePlan(text,old) {
-    const d=clone(old),changed=[],issues=[];let expectedTimes,pendingSlots;
+    const d=clone(old),changed=[],issues=[],resolvedKinds=[];let expectedTimes,pendingSlots;
     const set=(key,value)=>{d[key]=value;changed.push(key);};
     const doses=[...text.matchAll(new RegExp(`(?:早(?:餐|上)?|午(?:餐)?|晚(?:餐|上)?|睡前)(?:吃|服用)?(${NUM})(${UNIT})`,'g'))];
     if(/隔日|隔天|每周|每星期|按需|必要时|每隔/.test(text)||(doses.length>1&&new Set(doses.map(m=>`${number(m[1])}|${m[2]}`)).size>1)) {
-      return {draft:d,changed,issues:['当前计划只支持每日各时段相同用量，无法表达这段安排。原文已保留，请转手动核对；明确新的受支持安排前不会创建。'],blocked:true};
+      return {draft:d,changed,issues:['当前计划只支持每日各时段相同用量，无法表达这段安排。原文已保留，请转手动核对；明确新的受支持安排前不会创建。'],blocked:true,blockKind:'schedule'};
     }
     const clean=text.replace(/^(?:嗯[，,、 ]*|那个[，,、 ]*|我想[，, ]*)+/,'');
-    const mealSegments=clean.split(/(?=早餐|午餐|晚餐|睡前)/),negativeMeal=/(?:不要|不是|不选|不在|取消|不)(?:餐前|饭前|餐后|饭后)/,replacementMeal=/(?:改为|改成|调整为|设为)(餐前|饭前|餐后|饭后)/;
-    if(mealSegments.some(segment=>negativeMeal.test(segment)&&!replacementMeal.test(segment)))return {draft:d,changed,issues:['未确定新的餐时，原草稿保持不变。请明确改为餐前／餐后，或说“清除餐时”。']};
+    const mealSegments=clean.split(/(?=早餐|午餐|晚餐|睡前)/),negativeMeal=/(?:不要|不是|不选|不在|取消|不)(?:餐前|饭前|餐后|饭后)/,replacementMeal=/(?:改(?:为|成)?|调整为|设为|而是|(?<!不)是)(餐前|饭前|餐后|饭后)/;
+    for(const segment of mealSegments){
+      const replacements=[...segment.matchAll(new RegExp(replacementMeal.source,'g'))].map(match=>/前/.test(match[1])?'餐前':'餐后');
+      if(negativeMeal.test(segment)&&!replacements.length)return {draft:d,changed,issues:['未确定新的餐时，原草稿保持不变。请明确改为餐前／餐后，或说“清除餐时”。'],blocked:true,blockKind:'meal'};
+      if(new Set(replacements).size>1)return {draft:d,changed,issues:['餐时出现多个互相冲突的最终值，原草稿保持不变。请只明确一个餐时。'],blocked:true,blockKind:'meal',conflicts:replacements};
+      const plain=[...segment.matchAll(/餐前|饭前|餐后|饭后/g)].map(match=>/前/.test(match[0])?'餐前':'餐后');
+      if(!replacements.length&&new Set(plain).size>1)return {draft:d,changed,issues:['餐时出现多个互相冲突的值，原草稿保持不变。请明确餐前或餐后。'],blocked:true,blockKind:'meal',conflicts:plain};
+    }
+    const doseResult=doseUpdate(clean);
+    if(doseResult?.unresolved)return {draft:d,changed,issues:['未确定新的单次用量，原草稿保持不变。请明确改为多少以及单位。'],blocked:true,blockKind:'dose'};
+    if(doseResult?.conflict)return {draft:d,changed,issues:['单次用量出现多个互相冲突的最终值，原草稿保持不变。请只明确一个用量和单位。'],blocked:true,blockKind:'dose',conflicts:doseResult.candidates};
     let name=clean.match(/药名(?:是|叫|为)?[：: ]?([^，,。；;]+)/)?.[1];
     if(!name&&/每次/.test(clean)){const prefix=clean.split(/[，,]/)[0].replace(/^(?:添加药品|添加药|添加|创建计划)[：: ]*/,'');if(prefix&&!/每次|早餐|晚餐|睡前|不是|改为|改成/.test(prefix))name=prefix;}
     if(name&&name.length<=80)set('name',name.trim());
-    const doseMatches=[...clean.matchAll(new RegExp(`(?:每次(?:吃|服用)?|改成|改为|是)\\s*(${NUM})\\s*(${UNIT})`,'g'))];
-    const dose=doseMatches.at(-1)||clean.match(new RegExp(`^(${NUM})\\s*(${UNIT})[。！ ]*$`));
-    if(dose){set('doseValue',number(dose[1]));set('doseUnit',dose[2]);}
+    const dose=doseResult?.candidate;
+    if(dose){set('doseValue',dose.value);set('doseUnit',dose.unit);resolvedKinds.push('dose');}
     const freq=clean.match(new RegExp(`(?:每天|一天)(${NUM})次`));if(freq)expectedTimes=number(freq[1]);
     const explicit=SLOTS.filter(slot=>clean.includes(slot));
     if(/早晚/.test(clean)){pendingSlots=['早餐','晚餐'];issues.push('“早晚”是指早餐和晚餐吗？请点选确认；餐时可以不设。');}
@@ -78,12 +104,13 @@
     const meals=[...clean.matchAll(/餐前|饭前|餐后|饭后/g)];if(meals.length){
       if(explicit.length){for(const {slot,text:segment} of segments){const replacement=segment.match(replacementMeal)?.[1],local=replacement||[...segment.matchAll(/餐前|饭前|餐后|饭后/g)].at(-1)?.[0];if(local){d.slotSettings[slot].meal=/前/.test(local)?'餐前':'餐后';changed.push(`meal-${slot}`);}}}
       else {const meal=/前/.test(meals.at(-1)[0])?'餐前':'餐后',oldMeal=/前/.test(meals[0][0])?'餐前':'餐后';const target=/改/.test(clean)?d.slots.filter(s=>d.slotSettings[s].meal===oldMeal):d.slots;if(!target.length)issues.push('请先选择餐时对应的时段。');else for(const slot of target){d.slotSettings[slot].meal=meal;changed.push(`meal-${slot}`);}}
+      if(changed.some(key=>key.startsWith('meal-')))resolvedKinds.push('meal');
     }
-    if(/不设餐时|清除餐时|没有餐时/.test(clean)){for(const slot of explicit.length?explicit:d.slots){d.slotSettings[slot].meal='';changed.push(`meal-${slot}`);}}
+    if(/不设餐时|清除餐时|没有餐时/.test(clean)){for(const slot of explicit.length?explicit:d.slots){d.slotSettings[slot].meal='';changed.push(`meal-${slot}`);}resolvedKinds.push('meal');}
     const start=clean.match(/(?:从|开始日期[为是：:]?)(\d{4}-\d{2}-\d{2})/);if(start)set('startDate',start[1]);
     const end=clean.match(/(?:截至|到)(\d{4}-\d{2}-\d{2})/);if(end){set('endDate',end[1]);set('duration','截至某日期');}else if(/长期/.test(clean)){set('duration','长期服用');set('endDate','');}
     const note=clean.match(/备注[：:是为 ]?(.+)/);if(note)set('note',note[1]);
-    return {draft:d,changed,issues,expectedTimes,pendingSlots,resolveBlocked:/改为每天|改成每天/.test(clean)&&!!dose&&explicit.length>0};
+    return {draft:d,changed,issues,expectedTimes,pendingSlots,resolvedKinds,resolveBlocked:/改为每天|改成每天/.test(clean)&&!!dose&&explicit.length>0};
   }
   function parseHealth(text,old,oldType,date,time) {
     let type=oldType;if(/血压|高压|低压|收缩压|舒张压/.test(text))type='blood_pressure';else if(/血脂|胆固醇|甘油三酯|HDL|LDL/i.test(text))type='blood_lipid';else if(/身体|身高|体重|体脂/.test(text))type='body';
