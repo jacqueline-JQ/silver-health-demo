@@ -189,7 +189,8 @@
     return errors;
   }
   function chatPlanQuestion(c) {
-    const errors=chatPlanProblems(c),known=[c.plan.name&&`药名 ${c.plan.name}`,c.plan.doseValue&&`每次 ${c.plan.doseValue} ${c.plan.doseUnit||'（单位待补）'}`].filter(Boolean).join('，');
+    const errors=chatPlanProblems(c),schedule=c.plan.slots.map(slot=>`${slot} ${c.plan.slotSettings[slot].time}${c.plan.slotSettings[slot].meal?` ${c.plan.slotSettings[slot].meal}`:''}`).join('、');
+    const known=[c.plan.name&&`药名 ${c.plan.name}`,c.plan.doseValue&&`每次 ${c.plan.doseValue} ${c.plan.doseUnit||'（单位待补）'}`,schedule&&`时段 ${schedule}`,c.plan.startDate&&`开始 ${c.plan.startDate}`,c.plan.duration==='截至某日期'&&c.plan.endDate?`截至 ${c.plan.endDate}`:c.plan.duration,c.plan.note&&`备注 ${c.plan.note}`].filter(Boolean).join('，');
     return `${known?`已记下：${known}。`:''}${Object.values(errors)[0]||'信息已整理，可在下方配置卡修改；开始日期和长期周期是表单默认值，请核对。餐时与备注可以不设。'} 尚未创建计划。`;
   }
   function chatOpenForm(kind) {
@@ -233,7 +234,7 @@
     modal=null;render();openModal('chat',{targetId:c.targetId,chatKey:key});
   }
   function processChat(c,text,source) {
-    const inferred=C.intent(text,c.intent);c.status='正在询问';
+    const inferred=c.intent==='plan'&&hasPlanInput(c.plan)&&C.planModification(text)?'plan':C.intent(text,c.intent);c.status='正在询问';
     if(inferred==='medical'){chatMessage(c,'我可以整理和查询已保存的安排，不能推荐药物、增减剂量或作健康判断。请查看已有计划；涉及用药决定请向医生或药师确认。');return;}
     if(account().role==='child'&&['record','makeup','snooze','correct'].includes(inferred)){c.cards=[];c.selectedId=null;c.status='无权限';chatMessage(c,'只有长辈本人可以声明、补记、更正或延后。文字、示例语音和任务卡都遵守同一权限。');return;}
     if(inferred==='plan') {

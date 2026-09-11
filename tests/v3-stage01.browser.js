@@ -43,6 +43,17 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
   await send('每次1片，每次2片');ok(await page.locator('[name="doseValue"]').inputValue()==='0.5'&&await page.locator('.chat-conflict').count()===1,'冲突最终剂量不污染原草稿');
   await page.locator('[data-form="chat-plan"] button[type="submit"]').click();ok(await page.getByRole('alertdialog').count()===1,'剂量冲突保持核对阻止状态');await click('dismiss-errors');
   await page.locator('[name="doseValue"]').fill('1');await page.locator('[data-form="chat-plan"] button[type="submit"]').click();ok(await page.getByRole('dialog').getByRole('heading',{name:'确认用药计划'}).count()===1,'手动明确剂量后可以进入核对');
-  await page.screenshot({path:`${artifactDir}/p0-03-conflict-block.png`,animations:'disabled',fullPage:true});
-  ok(errors.length===0,'P0-01 至 P0-03 页面无脚本错误');return{passed:checks.length,checks,errors};
+  await click('close-modal');await send('药名改为草稿修改药，单位换成粒，早餐提醒时间改为09:05');
+  await send('时段改为早餐和晚餐');await send('晚餐提醒时间改为19:10，晚餐改为餐后');await send('开始日期改为2026-09-14，周期改为截至2026-09-20，备注改为晚饭后核对');
+  const summary=await page.locator('.chat-message.assistant').last().innerText();
+  ok(summary.includes('草稿修改药')&&summary.includes('每次 1 粒')&&summary.includes('早餐 09:05')&&summary.includes('晚餐 19:10 餐后')&&summary.includes('截至 2026-09-20')&&summary.includes('备注 晚饭后核对'),'聊天摘要同步全部草稿修改');
+  ok(await page.locator('[name="name"]').inputValue()==='草稿修改药'&&await page.locator('[name="doseUnit"]').inputValue()==='粒'&&await page.locator('[name="slots"][value="晚餐"]').isChecked(),'聊天配置卡同步名称、单位与时段');
+  ok((await page.locator('[data-slot="早餐"][data-part="hour"]').innerText()).includes('09')&&(await page.locator('[data-slot="晚餐"][data-part="minute"]').innerText()).includes('10'),'聊天配置卡同步两处 N1 时间');
+  const planCountBeforeQuery=await page.evaluate(()=>JSON.parse(localStorage.getItem('silver-health-data-v1')).medicationPlans.length);await send('今天几点吃药');
+  ok(await page.locator('.chat-tasks').count()===1&&await page.evaluate(()=>JSON.parse(localStorage.getItem('silver-health-data-v1')).medicationPlans.length)===planCountBeforeQuery,'查询已保存计划不修改或保存当前草稿');
+  await page.locator('[data-action="chat-intent"][data-intent="plan"]').click();ok(await page.locator('[name="name"]').inputValue()==='草稿修改药','查询后返回计划仍保留当前草稿');
+  await click('chat-form-plan');ok(await page.locator('[data-form="medicine"] [name="name"]').inputValue()==='草稿修改药'&&await page.locator('[data-form="medicine"] [name="note"]').inputValue()==='晚饭后核对','手动表单与聊天草稿一致');
+  await page.locator('[data-form="medicine"] button[type="submit"]').click();const review=await page.getByRole('dialog').innerText();ok(review.includes('草稿修改药')&&review.includes('1 粒')&&review.includes('09:05')&&review.includes('19:10')&&review.includes('餐后')&&review.includes('2026-09-20')&&review.includes('晚饭后核对'),'最终核对页与聊天和手动表单一致');
+  await page.screenshot({path:`${artifactDir}/p0-04-draft-edit.png`,animations:'disabled',fullPage:true});
+  ok(errors.length===0,'P0-01 至 P0-04 页面无脚本错误');return{passed:checks.length,checks,errors};
 }

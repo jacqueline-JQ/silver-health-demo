@@ -31,6 +31,9 @@
     if(/吃过|吃了|没吃|服用|不用吃|不需要吃|无需|可能吃|好像吃/.test(text)&&current!=='plan')return 'record';
     return current;
   }
+  function planModification(text) {
+    return /(?:改为|改成|调整为|设为|换成|取消|去掉|清除|不设)/.test(text)&&/(?:药名|名称|每次|用量|单位|时段|早餐|午餐|晚餐|睡前|提醒|餐前|饭前|餐后|饭后|开始|日期|周期|长期|截至|备注)/.test(text);
+  }
   function declaration(text,taskName='') {
     // 只接受完整支持陈述；未知后缀、问句和条件句均交给本人确认。
     const clauses=text.trim().replace(/[。！!]$/,'').replace(/\s/g,'').split(/[，,；;]/),statement=clauses.shift();
@@ -88,11 +91,12 @@
     const doseResult=doseUpdate(clean);
     if(doseResult?.unresolved)return {draft:d,changed,issues:['未确定新的单次用量，原草稿保持不变。请明确改为多少以及单位。'],blocked:true,blockKind:'dose'};
     if(doseResult?.conflict)return {draft:d,changed,issues:['单次用量出现多个互相冲突的最终值，原草稿保持不变。请只明确一个用量和单位。'],blocked:true,blockKind:'dose',conflicts:doseResult.candidates};
-    let name=clean.match(/药名(?:是|叫|为)?[：: ]?([^，,。；;]+)/)?.[1];
+    let name=clean.match(/(?:药名|名称)(?:改为|改成|调整为|设为|是|叫|为)?[：: ]?([^，,。；;]+)/)?.[1];
     if(!name&&/每次/.test(clean)){const prefix=clean.split(/[，,]/)[0].replace(/^(?:添加药品|添加药|添加|创建计划)[：: ]*/,'');if(prefix&&!/每次|早餐|晚餐|睡前|不是|改为|改成/.test(prefix))name=prefix;}
     if(name&&name.length<=80)set('name',name.trim());
     const dose=doseResult?.candidate;
     if(dose){set('doseValue',dose.value);set('doseUnit',dose.unit);resolvedKinds.push('dose');}
+    const unit=clean.match(new RegExp(`(?:用量)?单位(?:改为|改成|调整为|设为|换成)[：: ]?(${UNIT})`));if(unit){set('doseUnit',unit[1]);resolvedKinds.push('dose');}
     const freq=clean.match(new RegExp(`(?:每天|一天)(${NUM})次`));if(freq)expectedTimes=number(freq[1]);
     const explicit=SLOTS.filter(slot=>clean.includes(slot));
     if(/早晚/.test(clean)){pendingSlots=['早餐','晚餐'];issues.push('“早晚”是指早餐和晚餐吗？请点选确认；餐时可以不设。');}
@@ -107,9 +111,9 @@
       if(changed.some(key=>key.startsWith('meal-')))resolvedKinds.push('meal');
     }
     if(/不设餐时|清除餐时|没有餐时/.test(clean)){for(const slot of explicit.length?explicit:d.slots){d.slotSettings[slot].meal='';changed.push(`meal-${slot}`);}resolvedKinds.push('meal');}
-    const start=clean.match(/(?:从|开始日期[为是：:]?)(\d{4}-\d{2}-\d{2})/);if(start)set('startDate',start[1]);
+    const start=clean.match(/(?:从|开始日期(?:改为|改成|调整为|设为|为|是|：|:)?)(\d{4}-\d{2}-\d{2})/);if(start)set('startDate',start[1]);
     const end=clean.match(/(?:截至|到)(\d{4}-\d{2}-\d{2})/);if(end){set('endDate',end[1]);set('duration','截至某日期');}else if(/长期/.test(clean)){set('duration','长期服用');set('endDate','');}
-    const note=clean.match(/备注[：:是为 ]?(.+)/);if(note)set('note',note[1]);
+    const note=clean.match(/备注(?:改为|改成|调整为|设为|是|为|：|:| )?(.+)/);if(note)set('note',note[1]);
     return {draft:d,changed,issues,expectedTimes,pendingSlots,resolvedKinds,resolveBlocked:/改为每天|改成每天/.test(clean)&&!!dose&&explicit.length>0};
   }
   function parseHealth(text,old,oldType,date,time) {
@@ -128,5 +132,5 @@
     const names=[...new Set(events.map(e=>e.snapshot.name))].filter(n=>text.includes(n));if(names.length)selected=selected.filter(e=>names.includes(e.snapshot.name));
     return selected;
   }
-  return {examples,number,intent,declaration,parsePlan,parseHealth,taskFilter};
+  return {examples,number,intent,planModification,declaration,parsePlan,parseHealth,taskFilter};
 });
