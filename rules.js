@@ -229,40 +229,66 @@
     if(e.snoozeSyncState==='pending') { remote.snoozeUsed=0;remote.snoozedAt=null;remote.snoozeUntil=null; }
     return remote;
   }
-  function notificationEligible(d,kind,e) {
-    if(!e)return false;
-    const task=kind==='N2'?simulatedRemote(e):e;
-    if(task.cancelledAt||resolved(task)||protectedAt(task,now(d))||now(d)<task.createdAt)return false;
-    if(kind==='N2')return stateOf(task,d)==='overdue';
-    if(kind==='N3')return now(d)>=task.reminderAt;
-    return now(d)>=task.reminderAt && ((now(d)<task.deadlineAt) || (task.snoozeUsed&&now(d)>=task.snoozeUntil));
+  function validN2TaskTimes(e) {
+    if(!e||!validDate(e.date)||!SLOTS[e.slot]||!validTime(e.reminderTime)||e.scheduledTime!==e.reminderTime||minute(e.reminderTime)<RANGES[e.slot][0]||minute(e.reminderTime)>=RANGES[e.slot][1])return false;
+    const times=taskTimes(e.date,e.slot,e.reminderTime);
+    if(e.startAt!==times.startAt||e.reminderAt!==times.reminderAt||e.deadlineAt!==times.deadlineAt)return false;
+    if(e.missedAlertTime===null)return e.missedAlertAt===null;
+    return validTime(e.missedAlertTime)&&minute(e.missedAlertTime)>minute(e.reminderTime)&&minute(e.missedAlertTime)<RANGES[e.slot][1]&&e.missedAlertAt===stamp(e.date,e.missedAlertTime);
   }
-  function notificationRound(d,e,kind) {
+  function notificationEligible(d,kind,e,warningRound=null) {
+    if(!e)return false;
+    const task=kind==='N2'?simulatedRemote(e):e,at=now(d);
+    if(task.cancelledAt||resolved(task)||protectedAt(task,at)||at<task.createdAt||at<task.startAt)return false;
+    if(kind==='N2') {
+      if(!validN2TaskTimes(task))return false;
+      const eligible=round=>round==='early'
+        ? task.missedAlertAt!==null&&at>=task.missedAlertAt&&at<task.deadlineAt
+        : round==='deadline'&&at>=task.deadlineAt;
+      return warningRound===null?eligible('early')||eligible('deadline'):eligible(warningRound);
+    }
+    if(kind==='N3')return at>=task.reminderAt;
+    return at>=task.reminderAt && ((at<task.deadlineAt) || (task.snoozeUsed&&at>=task.snoozeUntil));
+  }
+  function notificationRound(d,e,kind,warningRound=null) {
     const task=kind==='N2'?simulatedRemote(e):e;
-    return task.snoozeUsed&&now(d)>=task.snoozeUntil?`snooze-${task.snoozeUntil}`:`initial-${kind==='N2'?task.deadlineAt:task.reminderAt}`;
+    if(kind==='N2') {
+      const round=warningRound||((now(d)>=task.deadlineAt)?'deadline':'early');
+      return `warning-${round}-${round==='deadline'?task.deadlineAt:task.missedAlertAt}`;
+    }
+    return task.snoozeUsed&&now(d)>=task.snoozeUntil?`snooze-${task.snoozeUntil}`:`initial-${task.reminderAt}`;
   }
   function notificationRecipients(d,kind,pid) {
-    return d.accounts.filter(a=>a.role===(kind==='N2'?'child':'elder')&&canAccess(d,a.id,pid));
+    return d.accounts.filter(a=>canAccess(d,a.id,pid)&&(kind==='N2'?(a.role==='child'||a.profileId===pid):a.role==='elder'));
   }
-  function appendNotification(d,kind,e,recipientId,operationId,fromAccountId=null) {
-    const round=kind==='N3'?operationId:notificationRound(d,e,kind);
-    const existing=d.notificationLogs.find(n=>n.kind===kind&&n.eventId===e.id&&n.recipientId===recipientId&&n.round===round);
+  const n2NotificationKey=(eventId,receiverId,warningRound)=>`${eventId}|${receiverId}|${warningRound}`;
+  function appendNotification(d,kind,e,recipientId,operationId,fromAccountId=null,warningRound=null) {
+    if(kind==='N2'&&!['early','deadline'].includes(warningRound))throw Error('N2 通知轮次无效');
+    const round=kind==='N3'?operationId:notificationRound(d,e,kind,warningRound);
+    const existing=kind==='N2'
+      ? d.notificationLogs.find(n=>n.kind==='N2'&&n.legacy!==true&&n2NotificationKey(n.eventId,n.receiverId,n.warningRound)===n2NotificationKey(e.id,recipientId,warningRound))
+      : d.notificationLogs.find(n=>n.kind===kind&&n.eventId===e.id&&n.recipientId===recipientId&&n.round===round);
     if(existing)return existing;
     const p=d.elderProfiles.find(p=>p.id===e.profileId),a=d.accounts.find(a=>a.id===fromAccountId);
     const pending=kind==='N2'&&(e.changes.some(c=>c.syncState==='pending')||e.snoozeSyncState==='pending');
     const title=kind==='N1'?'该吃药啦！':kind==='N2'?`${p.name}有用药记录待核对`:`${a.name}提醒您核对`;
-    const text=`${e.date} ${e.slot} · ${e.snapshot.name} · 计划 ${e.snapshot.doseValue} ${e.snapshot.doseUnit} · ${e.scheduledTime} 提醒，${pending?'模拟远端暂未收到记录':'目前尚未记录'}。请按实际情况记录。`;
+    const missing=pending?'模拟远端暂未收到记录（打卡）':'尚未收到打卡';
+    const noticeText=kind==='N2'?(warningRound==='early'?`提前预警：${missing}`:`已到本次自然时段截止，${missing}`):'目前尚未记录';
+    const text=`${e.date} ${e.slot} · ${e.snapshot.name} · 计划 ${e.snapshot.doseValue} ${e.snapshot.doseUnit} · ${e.scheduledTime} 提醒，${noticeText}。请按实际情况记录。`;
     const deliveryState=d.simulationMode==='failure'?'failed':d.simulationMode==='offline'&&kind==='N3'?'pending':'delivered';
     const noticeId=id('notice'),createdAt=now(d);
-    const n={id:noticeId,kind,eventId:e.id,profileId:e.profileId,date:e.date,recipientId,fromAccountId,operationId,round,title,text,shortText:'您有一条用药记录提醒',createdAt,deliveryState,deliveryAttempts:1,deliveredAt:deliveryState==='delivered'?createdAt:null,simulated:true,...(kind==='N2'?{warningRound:'deadline',receiverId:recipientId,notificationId:noticeId,sentAt:createdAt}:{})};
+    const n={id:noticeId,kind,eventId:e.id,profileId:e.profileId,date:e.date,recipientId,fromAccountId,operationId,round,title,text,shortText:'您有一条用药记录提醒',createdAt,deliveryState,deliveryAttempts:1,deliveredAt:deliveryState==='delivered'?createdAt:null,simulated:true,...(kind==='N2'?{warningRound,receiverId:recipientId,notificationId:noticeId,sentAt:createdAt}:{})};
     d.notificationLogs.push(n);return n;
   }
   function evaluateNotifications(d) {
     if(!d.notificationsEnabled)return [];
     const before=new Set(d.notificationLogs.map(n=>n.id));
-    for(const kind of ['N1','N2'])for(const e of d.doseEvents) {
-      if(!notificationEligible(d,kind,e))continue;
-      for(const recipient of notificationRecipients(d,kind,e.profileId))appendNotification(d,kind,e,recipient.id,`${kind}-${e.id}-${notificationRound(d,e,kind)}`);
+    for(const e of d.doseEvents) {
+      if(notificationEligible(d,'N1',e))for(const recipient of notificationRecipients(d,'N1',e.profileId))appendNotification(d,'N1',e,recipient.id,`N1-${e.id}-${notificationRound(d,e,'N1')}`);
+      for(const warningRound of ['early','deadline']) {
+        if(!notificationEligible(d,'N2',e,warningRound))continue;
+        for(const recipient of notificationRecipients(d,'N2',e.profileId))appendNotification(d,'N2',e,recipient.id,`N2-${n2NotificationKey(e.id,recipient.id,warningRound)}`,null,warningRound);
+      }
     }
     return d.notificationLogs.filter(n=>!before.has(n.id));
   }
@@ -281,7 +307,7 @@
     if(!d.notificationsEnabled)return;
     for(const n of d.notificationLogs.filter(n=>n.kind&&['failed','pending'].includes(n.deliveryState))) {
       const e=d.doseEvents.find(e=>e.id===n.eventId);
-      if(!canAccess(d,n.recipientId,n.profileId)||!notificationEligible(d,n.kind,e)||(n.kind==='N3'&&!canAccess(d,n.fromAccountId,n.profileId))) { n.deliveryState='suppressed';continue; }
+      if(!canAccess(d,n.recipientId,n.profileId)||!notificationEligible(d,n.kind,e,n.warningRound||null)||(n.kind==='N3'&&!canAccess(d,n.fromAccountId,n.profileId))) { n.deliveryState='suppressed';continue; }
       n.deliveryAttempts+=1;
       if(d.simulationMode==='online') { n.deliveryState='delivered';n.deliveredAt=now(d); }
     }
@@ -312,10 +338,12 @@
     const keys=new Set();
     d.notificationLogs.forEach(n=>{
       if(n.kind!=='N2')return;
-      const original=clone(n),e=d.doseEvents.find(e=>e.id===n.eventId),reliable=e&&e.profileId===n.profileId&&e.date===n.date&&d.accounts.some(a=>a.id===n.recipientId);
-      const key=reliable?`${n.eventId}|${n.recipientId}|deadline`:'';
+      const original=clone(n),e=d.doseEvents.find(e=>e.id===n.eventId);
+      const sentAt=validStamp(n.sentAt)?n.sentAt:n.deliveryState==='delivered'&&validStamp(n.deliveredAt)?n.deliveredAt:null;
+      const reliable=n.legacy!==true&&e&&e.profileId===n.profileId&&e.date===n.date&&d.accounts.some(a=>a.id===n.recipientId)&&typeof n.text==='string'&&typeof n.round==='string'&&typeof n.operationId==='string'&&validStamp(n.createdAt)&&['delivered','failed','pending','suppressed'].includes(n.deliveryState)&&Number.isInteger(n.deliveryAttempts)&&n.deliveryAttempts>0&&sentAt;
+      const key=reliable?n2NotificationKey(n.eventId,n.recipientId,'deadline'):'';
       if(!reliable||keys.has(key)){n.legacy=true;n.legacyRecord=original;delete n.warningRound;delete n.receiverId;delete n.notificationId;return;}
-      keys.add(key);n.warningRound='deadline';n.receiverId=n.recipientId;n.notificationId=n.id;n.sentAt=validStamp(n.sentAt)?n.sentAt:validStamp(n.deliveredAt)?n.deliveredAt:n.createdAt;
+      keys.add(key);delete n.legacy;n.warningRound='deadline';n.receiverId=n.recipientId;n.notificationId=n.id;n.sentAt=sentAt;
     });
   }
   function migrateV2ToV3(raw) {
@@ -408,9 +436,9 @@
       })) return false;
       if (!d.healthRecords.every(r => d.elderProfiles.some(p => p.id === r.profileId) && ['blood_pressure', 'blood_lipid', 'body'].includes(r.type) && r.values && Object.values(r.values).every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0) && typeof r.measuredAt === 'string' && validDate(r.measuredAt.slice(0, 10)) && validTime(r.measuredAt.slice(11, 16)))) return false;
       if(typeof d.notificationsEnabled!=='boolean'||typeof d.privatePreview!=='boolean'||!['online','offline','failure'].includes(d.simulationMode))return false;
-      const n2Keys=d.notificationLogs.filter(n=>n.kind==='N2'&&n.legacy!==true).map(n=>`${n.eventId}|${n.receiverId}|${n.warningRound}`);if(new Set(n2Keys).size!==n2Keys.length)return false;
-      return d.notificationLogs.every(n => d.doseEvents.some(e => e.id === n.eventId && e.profileId === n.profileId) && typeof n.text === 'string' &&
-        (n.legacy===true || (['N1','N2','N3'].includes(n.kind)&&d.accounts.some(a=>a.id===n.recipientId)&&validDate(n.date)&&d.doseEvents.some(e=>e.id===n.eventId&&e.date===n.date)&&typeof n.round==='string'&&typeof n.operationId==='string'&&validStamp(n.createdAt)&&['delivered','failed','pending','suppressed'].includes(n.deliveryState)&&Number.isInteger(n.deliveryAttempts)&&n.deliveryAttempts>0&&(n.kind!=='N2'||(['early','deadline'].includes(n.warningRound)&&n.receiverId===n.recipientId&&n.notificationId===n.id&&validStamp(n.sentAt))))));
+      const n2Keys=d.notificationLogs.filter(n=>n.kind==='N2'&&n.legacy!==true).map(n=>n2NotificationKey(n.eventId,n.receiverId,n.warningRound));if(new Set(n2Keys).size!==n2Keys.length)return false;
+      return d.notificationLogs.every(n => n.legacy===true?typeof n.text==='string':
+        (d.doseEvents.some(e=>e.id===n.eventId&&e.profileId===n.profileId&&e.date===n.date)&&typeof n.text==='string'&&['N1','N2','N3'].includes(n.kind)&&d.accounts.some(a=>a.id===n.recipientId)&&validDate(n.date)&&typeof n.round==='string'&&typeof n.operationId==='string'&&validStamp(n.createdAt)&&['delivered','failed','pending','suppressed'].includes(n.deliveryState)&&Number.isInteger(n.deliveryAttempts)&&n.deliveryAttempts>0&&(n.kind!=='N2'||(['early','deadline'].includes(n.warningRound)&&n.receiverId===n.recipientId&&n.notificationId===n.id&&validStamp(n.sentAt)))));
     } catch { return false; }
   }
   return { DAY, SLOTS, MISSED_ALERTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, notTakenEligibility, correctionEligibility, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult, notificationDefaults, simulatedRemote, notificationEligible, notificationRound, evaluateNotifications, sendN3, retryNotifications, syncSimulation, focusCandidates };

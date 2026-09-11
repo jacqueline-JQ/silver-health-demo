@@ -314,7 +314,7 @@
   app.addEventListener('pointermove',event=>{if(longPress&&!longPress.fired&&Math.hypot(event.clientX-longPress.x,event.clientY-longPress.y)>12){clearTimeout(longPress.timer);longPress=null;}});
   for(const type of ['pointerup','pointercancel'])document.addEventListener(type,()=>{if(longPress){clearTimeout(longPress.timer);if(longPress.fired)setTimeout(()=>{suppressLongClick=false;},350);longPress=null;}});
   function notificationList() {
-    return data.notificationLogs.filter(n=>n.kind&&n.recipientId===view.accountId&&canAccess(n.profileId)).map(n=>{
+    return data.notificationLogs.filter(n=>n.legacy!==true&&n.kind&&n.recipientId===view.accountId&&canAccess(n.profileId)).map(n=>{
       const e=data.doseEvents.find(e=>e.id===n.eventId),currentState=R.stateOf(n.kind==='N2'?R.simulatedRemote(e):e,data);
       return {...n,currentState,...(['taken','not_taken','skipped','cancelled'].includes(currentState)?{title:'记录已更新',text:`${e.date} ${e.slot} · ${e.snapshot.name}，最新状态：${STATUS[currentState]}。打开查看最新记录。`}:{})};
     });
@@ -327,7 +327,7 @@
     document.documentElement.dataset.os=data.notificationStyle;
     Bridge.send('STATE',bridgeState());
     if(!data.notificationsEnabled)return;
-    const notices=notificationList().filter(n=>n.deliveryState==='delivered'&&!shownBanners.has(n.id)&&R.notificationEligible(data,n.kind,data.doseEvents.find(e=>e.id===n.eventId)));
+    const notices=notificationList().filter(n=>n.deliveryState==='delivered'&&!shownBanners.has(n.id)&&R.notificationEligible(data,n.kind,data.doseEvents.find(e=>e.id===n.eventId),n.warningRound||null));
     notices.forEach(n=>{shownBanners.add(n.id);});
     const last=notices.at(-1);if(last)Bridge.send('BANNER',{notification:last,privatePreview:data.privatePreview});
   }
@@ -375,7 +375,7 @@
   }
   function openNotification(ref) {
     if(modal?.type==='reset')return {message:'请先完成或关闭恢复确认，再打开关联通知'};
-    const n=data.notificationLogs.find(n=>n.id===ref.notificationId&&n.kind);
+    const n=data.notificationLogs.find(n=>n.id===ref.notificationId&&n.legacy!==true&&n.kind);
     const reject=message=>{preserveDraft();closeModal(false);enterAccountHome(view.accountId,{preserveUndo:true});render();focusHome();toast(message,'warning');throw Error(message);};
     if(!n||n.eventId!==ref.eventId||n.profileId!==ref.profileId||n.date!==ref.date||n.recipientId!==ref.recipientId||n.recipientId!==view.accountId||!canAccess(n.profileId))return reject('通知已失效或当前账号无权查看');
     const e=data.doseEvents.find(e=>e.id===n.eventId);if(!e)return reject('原任务已不存在');
@@ -410,9 +410,9 @@
     if(type==='OPEN_NOTIFICATION')return openNotification(p);
     if(type==='SCENE') {
       if(p.kind==='N3') {if(account().role!=='child')throw Error('N3需由已授权子女发起');preserveDraft();navigate('home');return {message:'请在应用中对符合资格的任务点击“提醒 TA”'};}
-      if((p.kind==='N2')!==(account().role==='child'))throw Error(p.kind==='N2'?'请显式切换子女接收账号':'请显式切换长辈接收账号');
+      if(p.kind==='N1'&&account().role!=='elder')throw Error('请显式切换长辈接收账号');
       if(!commit(()=>{}))throw Error('通知检查未完成');
-      const notice=notificationList().filter(n=>n.kind===p.kind&&R.notificationEligible(data,n.kind,data.doseEvents.find(e=>e.id===n.eventId))).at(-1);
+      const notice=notificationList().filter(n=>n.kind===p.kind&&R.notificationEligible(data,n.kind,data.doseEvents.find(e=>e.id===n.eventId),n.warningRound||null)).at(-1);
       if(!data.notificationsEnabled)throw Error('模拟通知已关闭，仍可手动记录');
       if(!notice)throw Error('当前无符合资格的任务：请检查时刻、记录或延后保护');
       if(notice.deliveryState==='delivered')Bridge.send('BANNER',{notification:notice,privatePreview:data.privatePreview});

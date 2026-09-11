@@ -12,6 +12,10 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
     const eventId=await page.evaluate(({time,accountId})=>{const d=MedRules.prepareSeed(SILVER_SEED_DATA),e=d.doseEvents.find(e=>e.id==='event-metformin-breakfast'),p=d.medicationPlans.find(p=>p.id===e.planId);d.medicationPlans=[p];Object.assign(e,{status:'pending',recordedAt:null,recordedBy:null,actual:null,changes:[],changeToken:null,cancelledAt:null,snoozeUsed:0,snoozedAt:null,snoozeUntil:null,n3LastAt:null,started:true});d.doseEvents=[e];d.notificationLogs=[];d.demoTime=time;d.dateOffset=0;if(!MedRules.validData(d))throw Error('P0-06 fixture invalid');localStorage.setItem('silver-health-data-v1',JSON.stringify(d));sessionStorage.setItem('silver-health-view-v1',JSON.stringify({accountId}));return e.id;},{time,accountId});
     await page.reload();await closeFocus();return eventId;
   };
+  const loadP007=async()=>{
+    const eventId=await page.evaluate(()=>{const d=MedRules.prepareSeed(SILVER_SEED_DATA),e=d.doseEvents.find(event=>event.id==='event-metformin-breakfast'),p=d.medicationPlans.find(plan=>plan.id===e.planId);d.medicationPlans=[p];Object.assign(e,{status:'pending',recordedAt:null,recordedBy:null,actual:null,changes:[],changeToken:null,cancelledAt:null,snoozeUsed:0,snoozedAt:null,snoozeUntil:null,n3LastAt:null,started:true});delete e.snoozeSyncState;delete e.snoozeReceivedAt;d.doseEvents=[e];d.notificationLogs=[];d.demoTime='08:59';d.dateOffset=0;d.simulationMode='online';if(!MedRules.validData(d))throw Error('P0-07 fixture invalid');localStorage.setItem('silver-health-data-v1',JSON.stringify(d));sessionStorage.setItem('silver-health-view-v1',JSON.stringify({accountId:'elder-zhang'}));return e.id;});
+    await page.reload();await closeFocus();return eventId;
+  };
 
   await page.goto(`${BASE_URL}/index.html`);await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();await closeFocus();
   await nav('me');await click('clock');await page.locator('[name="time"]').fill('06:00');await page.getByRole('button',{name:'确认时间',exact:true}).click();await nav('home');
@@ -76,5 +80,18 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
 
   p006Id=await loadP006('11:00','child-li');await nav('plans');await page.locator('[data-action="plan-tab"][data-value="history"]').click();await page.locator(`[data-action="task-detail"][data-id="${p006Id}"]`).click();ok(await page.locator('#modal-root [data-action="declare"]').count()===0,'子女任务详情没有未服用入口');await click('close-modal');const childBefore=await page.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents));await nav('home');await click('assistant');await send('还没吃');ok((await page.locator('.chat-stream').innerText()).includes('只有长辈本人')&&await page.evaluate(before=>JSON.stringify(JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents)===before,childBefore),'子女助手尝试被拒绝且任务零变更');
   await page.screenshot({path:`${artifactDir}/p0-06-not-taken.png`,animations:'disabled',fullPage:true});
-  ok(errors.length===0,'P0-01 至 P0-06 页面无脚本错误');return{passed:checks.length,checks,errors};
+
+  const p007Id=await loadP007();ok(await page.evaluate(id=>JSON.parse(localStorage.getItem('silver-health-data-v1')).notificationLogs.filter(n=>n.kind==='N2'&&n.eventId===id).length,p007Id)===0,'提前预警前不生成 N2');
+  await nav('me');await click('clock');await page.locator('[name="time"]').fill('09:00');await page.getByRole('button',{name:'确认时间',exact:true}).click();await page.waitForTimeout(50);await closeFocus();
+  let p007=await page.evaluate(id=>{const d=JSON.parse(localStorage.getItem('silver-health-data-v1')),e=d.doseEvents.find(event=>event.id===id);return{notices:d.notificationLogs.filter(n=>n.kind==='N2'&&n.eventId===id),fact:{status:e.status,changes:e.changes}};},p007Id);
+  ok(JSON.stringify(p007.notices.filter(n=>n.warningRound==='early').map(n=>n.recipientId).sort())===JSON.stringify(['child-li','elder-zhang']),'09:00 提前轮同时写入长辈和授权子女的独立通知');
+  ok(p007.fact.status==='pending'&&p007.fact.changes.length===0,'提前轮不改服药事实');
+  await page.evaluate(()=>{const key='silver-health-data-v1',d=JSON.parse(localStorage.getItem(key)),child=d.accounts.find(account=>account.id==='child-li');child.boundProfileIds=[];d.accounts.push({...child,id:'child-new',name:'新授权家属',selectedProfileId:'profile-zhang',boundProfileIds:['profile-zhang']});d.demoTime='11:00';localStorage.setItem(key,JSON.stringify(d));sessionStorage.setItem('silver-health-view-v1',JSON.stringify({accountId:'elder-zhang'}));});await page.reload();await closeFocus();
+  p007=await page.evaluate(id=>{const d=JSON.parse(localStorage.getItem('silver-health-data-v1')),e=d.doseEvents.find(event=>event.id===id);return{notices:d.notificationLogs.filter(n=>n.kind==='N2'&&n.eventId===id),fact:{status:e.status,changes:e.changes},state:MedRules.stateOf(e,d)};},p007Id);
+  ok(JSON.stringify(p007.notices.filter(n=>n.warningRound==='deadline').map(n=>n.recipientId).sort())===JSON.stringify(['child-new','elder-zhang']),'11:00 截止轮按实时授权仅发送长辈和新授权子女');
+  ok(JSON.stringify(p007.notices.filter(n=>n.warningRound==='early').map(n=>n.recipientId).sort())===JSON.stringify(['child-li','elder-zhang']),'撤权后仍保留原接收人的历史提前轮');
+  ok(p007.state==='overdue'&&p007.fact.status==='pending'&&p007.fact.changes.length===0,'截止轮只显示未按时打卡而不自动写未服用');
+  const beforeRender=p007.notices.length;await nav('plans');await nav('home');ok(await page.evaluate(id=>JSON.parse(localStorage.getItem('silver-health-data-v1')).notificationLogs.filter(n=>n.kind==='N2'&&n.eventId===id).length,p007Id)===beforeRender,'重复页面渲染不生成或补写通知');
+  await page.screenshot({path:`${artifactDir}/p0-07-two-rounds.png`,animations:'disabled',fullPage:true});
+  ok(errors.length===0,'P0-01 至 P0-07 页面无脚本错误');return{passed:checks.length,checks,errors};
 }
