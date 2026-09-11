@@ -25,7 +25,7 @@ async (page,{handleDialogs=true,artifactDir='output/playwright/step-03'}={}) => 
   ok(await page.locator('#app-container').getAttribute('inert')!==null && await frame.locator('#app').getAttribute('inert')!==null,'桌面隐藏应用内外均inert');
   const seeded=await state(),sleep=seeded.doseEvents.find(e=>e.date==='2026-09-13'&&e.slot==='睡前');
   await page.locator('#banner-close').click();await show();ok(await frame.locator('#modal-root .focus-sheet').count()===1,'前台当前时段到点自动聚焦');
-  await closeFocus();ok(await frame.locator('#history-date').inputValue()==='2026-09-13','关闭提醒定位原日列表');
+  await closeFocus();ok(await frame.locator('.nav-item.is-active[data-page="home"]').count()===1,'关闭提醒返回长辈首页');
   ok((await state()).doseEvents.find(e=>e.id===sleep.id).status==='pending','关闭不写入声明');
   await nav('home');ok(await frame.locator('#modal-root .focus-sheet').count()===0,'同轮关闭后导航不重弹');
   await clock('07:55');await nav('home');ok(await frame.locator('#modal-root .focus-sheet').count()===0,'提醒点之前不自动聚焦');
@@ -38,9 +38,9 @@ async (page,{handleDialogs=true,artifactDir='output/playwright/step-03'}={}) => 
   ok(await frame.locator('[name="name"]').inputValue()==='通知打断时的草稿' && await frame.locator('[name="slots"][value="午餐"]').isChecked(),'通知处理后恢复文字与点选草稿');
   await switchTo('child-li');ok(!(await frame.locator('body').innerText()).includes('通知打断时的草稿'),'不同账号不泄露草稿');await switchTo('elder-zhang');
   ok(await frame.locator('#modal-root [data-form]').count()===0&&await frame.locator('[data-action="resume-draft"]').count()===1,'返回原账号先落首页并显示继续入口');await click('resume-draft');ok(await frame.locator('[name="name"]').inputValue()==='通知打断时的草稿','显式继续后恢复原账号工作草稿');await click('close-modal');
-  let n=(await state()).notificationLogs.find(n=>n.kind==='N1'&&n.eventId===sleep.id);await openNotice(n);await closeFocus();
-  await frame.locator(`[data-task-id="${sleep.id}"] [data-action="task-detail"]`).click();await frame.getByRole('dialog').locator('[data-action="take"]').click();
-  ok((await state()).doseEvents.find(e=>e.id===sleep.id).status==='taken','关闭通知后从列表本人打卡');await click('undo');
+  let n=(await state()).notificationLogs.find(n=>n.kind==='N1'&&n.eventId===sleep.id);await openNotice(n);const beforeClose=JSON.stringify((await state()).doseEvents.find(e=>e.id===sleep.id));await closeFocus();ok(await frame.locator('.nav-item.is-active[data-page="home"]').count()===1&&JSON.stringify((await state()).doseEvents.find(e=>e.id===sleep.id))===beforeClose,'关闭通知回首页且不改任务事实');
+  await openNotice(n);await frame.locator('#modal-root [data-action="view-focus-task"]').click();await frame.locator(`[data-task-id="${sleep.id}"] [data-action="task-detail"]`).click();await frame.getByRole('dialog').locator('[data-action="take"]').click();
+  ok((await state()).doseEvents.find(e=>e.id===sleep.id).status==='taken','查看对应任务后从列表本人打卡');await click('undo');
   await openNotice(n);await frame.getByRole('dialog').locator('[data-action="declare"]').click();ok((await state()).doseEvents.find(e=>e.id===sleep.id).status==='not_taken','提醒页未服用真实记录');
   await openNotice(n);ok(await frame.getByRole('dialog').locator('[data-action="take"]').count()===0 && (await frame.getByRole('dialog').innerText()).includes('未服用'),'旧N1读取最新声明不恢复旧操作');await click('close-modal');
   await switchTo('child-li');await nav('home');ok(await frame.locator('[data-action="take"], [data-action="snooze"], [data-action="correct-dose"]').count()===0,'子女无本人声明、延后和更正按钮');

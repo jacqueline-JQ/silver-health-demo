@@ -25,6 +25,14 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
     const savedView=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('silver-health-view-v1')));
     ok(savedView.accountId===accountId&&savedView.page==='home'&&savedView.planTab==='active'&&savedView.historyDate==='2026-09-13',`${accountId} 刷新后会话路由归一`);
   }
-  await page.screenshot({path:`${artifactDir}/p0-01-account-home.png`,animations:'disabled',fullPage:true});
-  ok(errors.length===0,'P0-01 页面无脚本错误');return{passed:checks.length,checks,errors};
+  await nav('me');await click('clock');await page.locator('[name="time"]').fill('21:15');await page.getByRole('button',{name:'确认时间',exact:true}).click();await nav('home');await page.locator('#modal-root .focus-sheet').waitFor();
+  const focusedId=await page.locator('#modal-root [data-action="take"]').getAttribute('data-id');
+  const beforeClose=await page.evaluate(id=>{const d=JSON.parse(localStorage.getItem('silver-health-data-v1'));return JSON.stringify({event:d.doseEvents.find(e=>e.id===id),logs:d.notificationLogs});},focusedId);
+  await click('close-modal');await assertHome('关闭该吃药啦提醒返回长辈首页');
+  const afterClose=await page.evaluate(id=>{const d=JSON.parse(localStorage.getItem('silver-health-data-v1'));return JSON.stringify({event:d.doseEvents.find(e=>e.id===id),logs:d.notificationLogs});},focusedId);
+  ok(afterClose===beforeClose,'关闭提醒不写事实、不消耗延后且不新增通知');
+  await page.reload();await page.locator('#modal-root .focus-sheet').waitFor();await page.locator('#modal-root [data-action="view-focus-task"]').click();
+  ok(await page.locator('.nav-item.is-active[data-page="plans"]').count()===1&&await page.locator(`[data-task-id="${focusedId}"]`).count()===1,'只有查看对应任务命令定位记录列表');
+  await page.screenshot({path:`${artifactDir}/p0-02-focus-close.png`,animations:'disabled',fullPage:true});
+  ok(errors.length===0,'P0-01/P0-02 页面无脚本错误');return{passed:checks.length,checks,errors};
 }

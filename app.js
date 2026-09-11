@@ -332,10 +332,18 @@
     view.planTab='history';view.historyDate=e.date;view.page='plans';closeModal(false);render();
     requestAnimationFrame(()=>app.querySelector(`[data-task-id="${CSS.escape(e.id)}"]`)?.scrollIntoView({block:'center',behavior:'instant'}));
   }
-  function dismissFocus() {
-    const context=modal;const e=data.doseEvents.find(e=>e.id===context.eventId);
+  function markFocusDismissed(context) {
     for(const taskId of context.queue||[context.eventId]) {const task=data.doseEvents.find(t=>t.id===taskId);if(task)dismissedFocus.add(focusKey(task));}
-    closeModal(false);if(e)locateTask(e);else render();
+  }
+  function dismissFocus() {
+    const context=modal;
+    markFocusDismissed(context);
+    closeModal(false);enterAccountHome(view.accountId);render();scheduleFocus();
+  }
+  function viewFocusTask() {
+    const context=modal,e=data.doseEvents.find(task=>task.id===context?.eventId);
+    if(!e||!canAccess(e.profileId))return dismissFocus();
+    markFocusDismissed(context);closeModal(false);locateTask(e);
   }
   function advanceFocus(context,eventId) {
     const event=data.doseEvents.find(e=>e.id===eventId);if(event)dismissedFocus.add(focusKey(event));
@@ -349,7 +357,7 @@
     if(!e||!canAccess(e.profileId))return ['无法查看','<p>任务不存在或授权已失效。</p>'];
     if(e.cancelledAt)return ['提醒已失效','<p>该次任务已取消，不能继续打卡。</p>'];
     if(resolved(e))return ['该任务已有记录',`<p>${esc(e.snapshot.name)}</p>${badge(e)}${recordDetails(e)}`];
-    return [stateOf(e)==='overdue'?'这次用药还没有记录':'该吃药啦！',`<div class="focus-content"><p class="focus-progress">第 ${modal.position} / ${modal.total} 项 · 可关闭后再处理</p><div class="focus-clock">${icon('clock')}</div><p>${e.date} · ${e.slot} · 提醒 ${e.scheduledTime}</p><h3>${esc(e.snapshot.name)}</h3><p class="focus-dose">计划 ${esc(e.snapshot.doseValue)} ${esc(e.snapshot.doseUnit)} ${mealTag(e)}</p>${e.snapshot.note?`<p>${esc(e.snapshot.note)}</p>`:''}${badge(e)}${doseActions(e)}<p class="helper-text">仅记录本人声明，不提供用药建议。</p></div>`];
+    return [stateOf(e)==='overdue'?'这次用药还没有记录':'该吃药啦！',`<div class="focus-content"><p class="focus-progress">第 ${modal.position} / ${modal.total} 项 · 可关闭后再处理</p><div class="focus-clock">${icon('clock')}</div><p>${e.date} · ${e.slot} · 提醒 ${e.scheduledTime}</p><h3>${esc(e.snapshot.name)}</h3><p class="focus-dose">计划 ${esc(e.snapshot.doseValue)} ${esc(e.snapshot.doseUnit)} ${mealTag(e)}</p>${e.snapshot.note?`<p>${esc(e.snapshot.note)}</p>`:''}${badge(e)}${doseActions(e)}${button(`${icon('calendar')}查看对应任务`,'view-focus-task','button-secondary')}<p class="helper-text">仅记录本人声明，不提供用药建议。</p></div>`];
   }
   function openNotification(ref) {
     if(modal?.type==='reset')return {message:'请先完成或关闭恢复确认，再打开关联通知'};
@@ -1002,6 +1010,7 @@
     if(action==='chat-clear'){const c=chatSession();if(c){c.input='';c.preview=null;c.status='等待输入';renderModal();app.querySelector('#chat-input')?.focus();}return;}
     if (action === 'navigate') return navigate(target.dataset.page);
     if(action==='resume-draft')return resumeDraft();
+    if(action==='view-focus-task'&&modal?.type==='focus')return viewFocusTask();
     if(action==='open-notice') {
       const n=data.notificationLogs.find(n=>n.id===itemId);if(!n)return;
       try {openNotification({notificationId:n.id,eventId:n.eventId,profileId:n.profileId,date:n.date,recipientId:n.recipientId});}catch(error){toast(error.message,'warning');}return;
