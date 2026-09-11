@@ -19,6 +19,7 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
   ok(await page.locator('[data-action="resume-draft"]').count()===1,'长辈首页只显示继续输入入口');await click('resume-draft');ok(await page.locator('[name="systolic"]').inputValue()==='123','显式继续恢复长辈血压草稿');await click('close-modal');
   await switchTo('child-li');await assertHome('返回子女账号仍先落首页');ok(await page.locator('[data-action="resume-draft"]').count()===1,'子女首页显示当前档案继续入口');await click('resume-draft');ok(await page.locator('[name="name"]').inputValue()==='王叔叔未保存草稿','显式继续恢复子女当前档案草稿');await click('close-modal');
   for(const accountId of ['elder-zhang','child-li','elder-zhang','child-li','elder-zhang']){await switchTo(accountId);await assertHome(`连续切换 ${accountId} 保持首页落点`);}
+  await page.locator('.app-main').evaluate(element=>{element.scrollTop=element.scrollHeight;});await switchTo('child-li');ok(await page.locator('.app-main').evaluate(element=>element.scrollTop)===0,'账号切换不继承来源账号滚动位置');await switchTo('elder-zhang');
 
   for(const accountId of ['child-li','elder-zhang']){
     await page.evaluate(({accountId})=>sessionStorage.setItem('silver-health-view-v1',JSON.stringify({accountId,page:'plans',planTab:'inactive',historyDate:'2026-09-01',healthType:'body'})),{accountId});
@@ -54,6 +55,10 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
   await page.locator('[data-action="chat-intent"][data-intent="plan"]').click();ok(await page.locator('[name="name"]').inputValue()==='草稿修改药','查询后返回计划仍保留当前草稿');
   await click('chat-form-plan');ok(await page.locator('[data-form="medicine"] [name="name"]').inputValue()==='草稿修改药'&&await page.locator('[data-form="medicine"] [name="note"]').inputValue()==='晚饭后核对','手动表单与聊天草稿一致');
   await page.locator('[data-form="medicine"] button[type="submit"]').click();const review=await page.getByRole('dialog').innerText();ok(review.includes('草稿修改药')&&review.includes('1 粒')&&review.includes('09:05')&&review.includes('19:10')&&review.includes('餐后')&&review.includes('2026-09-20')&&review.includes('晚饭后核对'),'最终核对页与聊天和手动表单一致');
+  await click('close-modal');await send('早餐不是餐后');await send('每次1粒，每次2粒');ok(await page.locator('.chat-conflict').count()===2,'早餐餐时与剂量冲突分别保持未解决');
+  await send('每次3粒');ok(await page.locator('.chat-conflict').count()===1&&await page.locator('[name="doseValue"]').inputValue()==='3','明确剂量只解除剂量冲突');
+  await send('晚餐改为餐前');ok(await page.locator('.chat-conflict').count()===1,'修改晚餐不解除早餐餐时冲突');
+  await send('早餐改为餐后');ok(await page.locator('.chat-conflict').count()===0,'明确早餐餐时后解除对应冲突');
   await page.screenshot({path:`${artifactDir}/p0-04-draft-edit.png`,animations:'disabled',fullPage:true});
   ok(errors.length===0,'P0-01 至 P0-04 页面无脚本错误');return{passed:checks.length,checks,errors};
 }
