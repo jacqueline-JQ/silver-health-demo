@@ -58,8 +58,9 @@
   let view = { accountId: 'elder-zhang', page: 'home', healthType: 'blood_pressure', planTab: 'active', historyDate: DAY };
   try { Object.assign(view, JSON.parse(sessionStorage.getItem(VIEW_KEY) || '{}')); } catch { /* 无存储权限时继续使用内存。 */ }
   if (!data.accounts.some(a => a.id === view.accountId)) view.accountId = data.accounts[0].id;
-  if (!['home', 'plans', 'health', 'me'].includes(view.page)) view.page = 'home';
   if (!TYPES[view.healthType]) view.healthType = 'blood_pressure';
+  // 整页载入只恢复合法身份与显示偏好，不恢复旧页面或工作弹窗。
+  Object.assign(view, { page: 'home', planTab: 'active', historyDate: R.day(data) });
   let modal = null;
   let modalReturnFocus = null;
   let undo = null;
@@ -127,12 +128,17 @@
     if(!saved || !canAccess(saved.modal.targetId))return toast('没有可继续的输入。','warning');
     view={...saved.view,accountId:view.accountId};modal=clone(saved.modal);hydrateChatDraft();render();
   }
+  function enterAccountHome(accountId) {
+    const nextAccount=data.accounts.find(a=>a.id===accountId);
+    if(!nextAccount)throw Error('演示账号不存在');
+    clearTimeout(undoTimer);
+    view={...view,accountId,page:'home',planTab:'active',historyDate:today()};
+    modal=null;modalReturnFocus=null;undo=null;overdueOpen=false;
+  }
   function switchAccount(accountId) {
-    if(!data.accounts.some(a=>a.id===accountId))throw Error('演示账号不存在');
     document.querySelectorAll('.modal-exit-copy').forEach(el=>{el.remove();});
-    preserveDraft();closeModal(false);view.accountId=accountId;undo=null;overdueOpen=false;dismissedFocus.clear();visitId=id('visit');
-    const saved=sessionViews.get(sessionKey());view={...view,...(saved?.view||{page:'home',planTab:'active',historyDate:today()}),accountId};
-    render();if(drafts.has(sessionKey()))resumeDraft();else scheduleFocus();publishState();
+    preserveDraft();closeModal(false);enterAccountHome(accountId);
+    render();scheduleFocus();publishState();
   }
   function switchProfile(profileId,restore=true) {
     if(account().role!=='child'||!canAccess(profileId))throw Error('无权选择此档案');

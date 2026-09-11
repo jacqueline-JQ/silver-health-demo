@@ -37,7 +37,7 @@ async (page,{handleDialogs=true,artifactDir='output/playwright/step-03'}={}) => 
   ok(await frame.locator('#modal-root .focus-sheet').count()===1,'横幅进入任务提醒页');await closeFocus();await click('resume-draft');
   ok(await frame.locator('[name="name"]').inputValue()==='通知打断时的草稿' && await frame.locator('[name="slots"][value="午餐"]').isChecked(),'通知处理后恢复文字与点选草稿');
   await switchTo('child-li');ok(!(await frame.locator('body').innerText()).includes('通知打断时的草稿'),'不同账号不泄露草稿');await switchTo('elder-zhang');
-  ok(await frame.locator('[name="name"]').inputValue()==='通知打断时的草稿','返回原账号恢复工作草稿');await click('close-modal');
+  ok(await frame.locator('#modal-root [data-form]').count()===0&&await frame.locator('[data-action="resume-draft"]').count()===1,'返回原账号先落首页并显示继续入口');await click('resume-draft');ok(await frame.locator('[name="name"]').inputValue()==='通知打断时的草稿','显式继续后恢复原账号工作草稿');await click('close-modal');
   let n=(await state()).notificationLogs.find(n=>n.kind==='N1'&&n.eventId===sleep.id);await openNotice(n);await closeFocus();
   await frame.locator(`[data-task-id="${sleep.id}"] [data-action="task-detail"]`).click();await frame.getByRole('dialog').locator('[data-action="take"]').click();
   ok((await state()).doseEvents.find(e=>e.id===sleep.id).status==='taken','关闭通知后从列表本人打卡');await click('undo');
