@@ -1,6 +1,7 @@
 async(page,{artifactDir='output/playwright/step-04'}={})=>{
+  const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:8765';
   const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));const ok=(v,label)=>{if(!v)throw Error(`${label}；最后通过${checks.at(-1)}`);checks.push(label);};
-  await page.goto('http://127.0.0.1:8765/demo.html');await page.waitForFunction(()=>document.querySelector('#ready-status').textContent.includes('已就绪'));const f=page.frames().find(f=>f.url().includes('index.html?demo=1'));
+  await page.goto(`${BASE_URL}/demo.html`);await page.waitForFunction(()=>document.querySelector('#ready-status').textContent.includes('已就绪'));const f=page.frames().find(f=>f.url().includes('index.html?demo=1'));
   const request=async(type,payload={})=>page.evaluate(({type,payload})=>new Promise(resolve=>{const frame=document.getElementById('app-frame'),requestId=`chat-test-${Math.random()}`;const handler=e=>{if(e.source===frame.contentWindow&&e.data?.type==='ACK'&&e.data.requestId===requestId){removeEventListener('message',handler);resolve(e.data.payload);}};addEventListener('message',handler);frame.contentWindow.postMessage({channel:'yaoanxin-demo',version:1,type,payload,requestId},location.origin);}),{type,payload});
   const click=a=>f.locator(`#modal-root [data-action="${a}"]:visible`).first().click();
   const nav=p=>f.locator(`[data-action="navigate"][data-page="${p}"]`).click();const state=()=>f.evaluate(()=>JSON.parse(localStorage.getItem('silver-health-data-v1')));

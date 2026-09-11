@@ -1,4 +1,5 @@
 async (page,{artifactDir='output/playwright/step-02'}={}) => {
+  const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:8765';
   const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
   const ok=(x,label)=>{if(!x)throw Error(label);checks.push(label);};
   const click=a=>page.locator(`[data-action="${a}"]:visible`).first().click();
@@ -9,7 +10,7 @@ async (page,{artifactDir='output/playwright/step-02'}={}) => {
   const clock=async time=>{await nav('me');await click('clock');await page.locator('[name="time"]').fill(time);await page.getByRole('button',{name:'确认时间',exact:true}).click();await nav('home');};
   const field=(name,value)=>page.locator(`[name="${name}"]`).fill(value);
   const review=()=>page.getByRole('button',{name:'核对用药计划',exact:true}).click();
-  await page.goto('http://127.0.0.1:8765/index.html');await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();await dismissFocus();
+  await page.goto(`${BASE_URL}/index.html`);await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();await dismissFocus();
   ok(await page.getByRole('button',{name:'点击添加用药打卡',exact:true}).count()===1 && await page.getByRole('button',{name:'点击添加身体数据',exact:true}).count()===1,'长辈两张快捷卡片');
   await click('history');ok(await page.locator('#history-date').count()===1 && await page.getByRole('dialog').count()===0,'顶部时钟直达打卡历史');
   await nav('plans');await click('quick-add');ok(await page.getByRole('dialog').getByRole('heading',{name:'添加药品打卡计划'}).count()===1,'用药加号直达计划');await click('close-modal');

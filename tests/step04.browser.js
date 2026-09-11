@@ -1,4 +1,5 @@
 async(page,{artifactDir='output/playwright/step-04'}={})=>{
+  const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:8765';
   const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
   const ok=(v,label)=>{if(!v)throw Error(`${label}；最后通过：${checks.at(-1)}`);checks.push(label);};
   const click=a=>page.locator(`[data-action="${a}"]:visible`).first().click();
@@ -7,7 +8,7 @@ async(page,{artifactDir='output/playwright/step-04'}={})=>{
   const closeFocus=async()=>{if(await page.locator('#modal-root .focus-sheet').count()){await page.locator('#modal-root [data-action="close-modal"]').click();await nav('home');}};
   const send=async text=>{await page.locator('#chat-input').fill(text);await page.locator('[data-form="chat"] button[type="submit"]').click();await page.waitForFunction(()=>!document.querySelector('.chat-status')?.textContent.includes('处理中'));};
   const transcript=()=>page.locator('.chat-stream').innerText();
-  await page.goto('http://127.0.0.1:8765/index.html');await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();await closeFocus();
+  await page.goto(`${BASE_URL}/index.html`);await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();await closeFocus();
   await nav('me');await click('clock');await page.locator('[name="time"]').fill('06:00');await page.locator('[data-form="clock"] button[type="submit"]').click();await nav('home');
   await click('assistant');ok((await transcript()).includes('张阿姨，您好')&&await page.locator('#chat-input').isVisible(),'首页点击助手主动问候文字输入');ok(!(await page.locator('body').innerText()).includes('正在聆听'),'不冒充真实麦克风');
   const initial=await state();await send('那个，示例药，每次一片，早晚吃');ok(await page.locator('[name="name"]').inputValue()==='示例药'&&await page.locator('[name="doseValue"]').inputValue()==='1','实际文字提取药名与每次用量');ok(await page.locator('[name="slots"]:checked').count()===0&&await page.locator('[data-action="chat-confirm-slots"]').count()===1,'早晚保留待确认且不猜餐时');

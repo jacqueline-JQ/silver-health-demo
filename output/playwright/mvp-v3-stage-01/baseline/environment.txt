@@ -1,0 +1,7 @@
+/opt/homebrew/bin/npx
+HEAD=ce079ffca75f670e89159c58eac64d8b05e1eb61
+branch=main
+node_test_exit=0
+base_url=http://127.0.0.1:8765
+index.html=reachable
+demo.html=reachable

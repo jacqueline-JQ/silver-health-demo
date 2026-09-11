@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "family": {
+    "id": "fixture-family",
+    "name": "Fixture 家庭",
+    "inviteCode": "FIXTURE1"
+  },
+  "accounts": [
+    {
+      "id": "fixture-elder",
+      "name": "长辈甲",
+      "role": "elder",
+      "age": 70,
+      "relation": "本人",
+      "avatar": "甲",
+      "fontMode": "elder",
+      "profileId": "fixture-profile"
+    },
+    {
+      "id": "fixture-child",
+      "name": "家属乙",
+      "role": "child",
+      "age": 40,
+      "relation": "女儿",
+      "avatar": "乙",
+      "fontMode": "normal",
+      "selectedProfileId": "fixture-profile",
+      "boundProfileIds": ["fixture-profile"]
+    }
+  ],
+  "elderProfiles": [
+    {
+      "id": "fixture-profile",
+      "name": "长辈甲",
+      "relation": "本人",
+      "age": 70,
+      "avatar": "甲"
+    }
+  ],
+  "medicationPlans": [
+    {
+      "id": "fixture-plan",
+      "profileId": "fixture-profile",
+      "name": "Fixture 旧计划",
+      "doseValue": 1,
+      "doseUnit": "片",
+      "slots": ["早餐后"],
+      "startDate": "2026-09-01",
+      "duration": "长期服用",
+      "source": "固定 v1 fixture",
+      "status": "active",
+      "color": "blue",
+      "note": "旧版备注"
+    }
+  ],
+  "doseEvents": [
+    {
+      "id": "fixture-event",
+      "profileId": "fixture-profile",
+      "planId": "fixture-plan",
+      "slot": "早餐后",
+      "scheduledTime": "08:00",
+      "date": "2026-09-13",
+      "status": "overdue",
+      "recordedAt": null,
+      "recordedBy": null
+    }
+  ],
+  "healthRecords": [],
+  "notificationLogs": []
+}

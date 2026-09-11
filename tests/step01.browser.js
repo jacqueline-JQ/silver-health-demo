@@ -1,4 +1,5 @@
-async (page) => {
+async (page, {artifactDir='output/playwright/step-01'}={}) => {
+  const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:8765';
   const checks = [];
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -9,7 +10,7 @@ async (page) => {
     await click('clock'); await page.locator('[name="time"]').fill(time); await page.locator('[name="dateOffset"]').fill(String(offset)); await page.getByRole('button', {name:'确认时间',exact:true}).click();
   };
   const switchTo = async id => { await click('accounts'); await page.locator(`[data-action="switch-account"][data-id="${id}"]`).click(); };
-  await page.goto('http://127.0.0.1:8765/index.html');
+  await page.goto(`${BASE_URL}/index.html`);
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await page.reload();
   ok(await page.getByRole('heading',{name:'张阿姨，您好'}).count() === 1, '首页渲染');
   await click('snooze');
@@ -47,7 +48,7 @@ async (page) => {
     await page.setViewportSize({width,height:900}); await page.locator('[data-action="navigate"][data-page="me"]').click(); await page.locator(`[data-action="font"][data-value="${font}"]`).click();
     await page.locator('[data-action="navigate"][data-page="home"]').click();
     ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`首页无横向溢出 ${width}/${font}`);
-    await page.screenshot({path:`output/playwright/step-01/home-${width}-${font}.png`,fullPage:true,animations:'disabled'});
+    await page.screenshot({path:`${artifactDir}/home-${width}-${font}.png`,fullPage:true,animations:'disabled'});
   }
   await click('clock'); await page.keyboard.press('Escape'); ok(await page.locator('[role="dialog"]').count()===0 && await page.evaluate(()=>document.activeElement.dataset.action)==='clock','键盘退出且焦点回到时钟按钮');
   // 独立测试上下文中注入异常存档，验证保留原文及明确降级。
@@ -68,11 +69,11 @@ async (page) => {
   for (const width of [360,1280]) for (const font of ['normal','elder']) {
     await page.setViewportSize({width,height:900}); await page.locator('[data-action="navigate"][data-page="me"]').click();await page.locator(`[data-action="font"][data-value="${font}"]`).click();await page.locator('[data-action="navigate"][data-page="home"]').click();
     await click('quick-add');await click('add-med');await page.locator('[name="name"]').fill('布局检查药');await page.locator('[name="doseValue"]').fill('0.5');await page.locator('[name="slots"][value="睡前"]').check();
-    ok(await page.evaluate(()=>{const el=document.querySelector('.modal-sheet');return el.scrollWidth<=el.clientWidth+1}),`表单布局 ${width}/${font}`);await page.screenshot({path:`output/playwright/step-01/form-${width}-${font}.png`,animations:'disabled'});
+    ok(await page.evaluate(()=>{const el=document.querySelector('.modal-sheet');return el.scrollWidth<=el.clientWidth+1}),`表单布局 ${width}/${font}`);await page.screenshot({path:`${artifactDir}/form-${width}-${font}.png`,animations:'disabled'});
     await page.getByRole('button',{name:'核对用药计划',exact:true}).click();ok(await page.evaluate(()=>{const el=document.querySelector('.modal-sheet');return el.scrollWidth<=el.clientWidth+1}),`核对布局 ${width}/${font}`);await click('close-modal');
     await page.locator('[data-action="navigate"][data-page="plans"]').click();await page.locator('[data-action="plan-tab"][data-value="history"]').click();
     ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`历史布局 ${width}/${font}`);
-    await page.locator('[data-action="task-detail"][data-id="event-atorvastatin-bedtime"]').click();ok(await page.evaluate(()=>{const el=document.querySelector('.modal-sheet');return el.scrollWidth<=el.clientWidth+1}),`任务详情布局 ${width}/${font}`);await page.screenshot({path:`output/playwright/step-01/detail-${width}-${font}.png`,animations:'disabled'});await click('close-modal');
+    await page.locator('[data-action="task-detail"][data-id="event-atorvastatin-bedtime"]').click();ok(await page.evaluate(()=>{const el=document.querySelector('.modal-sheet');return el.scrollWidth<=el.clientWidth+1}),`任务详情布局 ${width}/${font}`);await page.screenshot({path:`${artifactDir}/detail-${width}-${font}.png`,animations:'disabled'});await click('close-modal');
   }
   await page.locator('[data-action="navigate"][data-page="home"]').click();
   await page.evaluate(()=> { const d=MedRules.prepareSeed(SILVER_SEED_DATA); d.medicationPlans=[];d.doseEvents=[];d.healthRecords=[];d.notificationLogs=[];localStorage.setItem('silver-health-data-v1',JSON.stringify(d)); }); await page.reload();

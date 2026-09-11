@@ -1,0 +1,116 @@
+{
+  "version": 2,
+  "families": [
+    {
+      "id": "fixture-family",
+      "name": "Fixture 家庭",
+      "inviteCode": "FIXTURE2"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "fixture-elder",
+      "name": "长辈甲",
+      "role": "elder",
+      "age": 70,
+      "relation": "本人",
+      "avatar": "甲",
+      "fontMode": "elder",
+      "familyId": "fixture-family",
+      "profileId": "fixture-profile"
+    },
+    {
+      "id": "fixture-child",
+      "name": "家属乙",
+      "role": "child",
+      "age": 40,
+      "relation": "女儿",
+      "avatar": "乙",
+      "fontMode": "normal",
+      "familyId": "fixture-family",
+      "selectedProfileId": "fixture-profile",
+      "boundProfileIds": ["fixture-profile"]
+    }
+  ],
+  "elderProfiles": [
+    {
+      "id": "fixture-profile",
+      "familyId": "fixture-family",
+      "name": "长辈甲",
+      "relation": "本人",
+      "age": 70,
+      "avatar": "甲"
+    }
+  ],
+  "medicationPlans": [
+    {
+      "id": "fixture-plan",
+      "profileId": "fixture-profile",
+      "name": "Fixture v2 计划",
+      "doseValue": 1,
+      "doseUnit": "片",
+      "slots": ["早餐"],
+      "slotSettings": {
+        "早餐": {"time": "08:00", "meal": "餐后"},
+        "午餐": {"time": "12:30", "meal": ""},
+        "晚餐": {"time": "18:30", "meal": ""},
+        "睡前": {"time": "21:00", "meal": ""}
+      },
+      "startDate": "2026-09-01",
+      "duration": "长期服用",
+      "endDate": null,
+      "note": "固定 v2 fixture",
+      "source": "手动录入",
+      "assisted": false,
+      "createdBy": "fixture-child",
+      "createdAt": "2026-09-01T00:00:00+08:00",
+      "effectiveAt": "2026-09-01T00:00:00+08:00",
+      "version": 1,
+      "status": "active",
+      "color": "blue",
+      "revisions": []
+    }
+  ],
+  "doseEvents": [
+    {
+      "id": "fixture-event",
+      "planId": "fixture-plan",
+      "profileId": "fixture-profile",
+      "date": "2026-09-13",
+      "slot": "早餐",
+      "scheduledTime": "08:00",
+      "startAt": "2026-09-13T05:00:00+08:00",
+      "deadlineAt": "2026-09-13T11:00:00+08:00",
+      "reminderAt": "2026-09-13T08:00:00+08:00",
+      "createdAt": "2026-09-13T00:00:00+08:00",
+      "started": true,
+      "planVersion": 1,
+      "cancelledAt": null,
+      "snapshot": {
+        "name": "Fixture v2 计划",
+        "doseValue": 1,
+        "doseUnit": "片",
+        "meal": "餐后",
+        "note": "固定 v2 fixture",
+        "color": "blue"
+      },
+      "status": "pending",
+      "recordedAt": null,
+      "recordedBy": null,
+      "actual": null,
+      "changes": [],
+      "snoozeUsed": 0,
+      "snoozedAt": null,
+      "snoozeUntil": null,
+      "n3LastAt": null
+    }
+  ],
+  "healthRecords": [],
+  "notificationLogs": [],
+  "demoTime": "10:00",
+  "dateOffset": 0,
+  "notificationStyle": "ios",
+  "notificationsEnabled": true,
+  "privatePreview": false,
+  "simulationMode": "online"
+}

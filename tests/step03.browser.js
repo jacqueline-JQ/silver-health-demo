@@ -1,8 +1,9 @@
 async (page,{handleDialogs=true,artifactDir='output/playwright/step-03'}={}) => {
+  const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:8765';
   const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));if(handleDialogs)page.on('dialog',dialog=>dialog.accept());
   const ok=(condition,label)=>{if(!condition)throw Error(label);checks.push(label);};
   try {
-  await page.goto('http://127.0.0.1:8765/index.html');await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.goto('http://127.0.0.1:8765/demo.html');
+  await page.goto(`${BASE_URL}/index.html`);await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.goto(`${BASE_URL}/demo.html`);
   await page.waitForFunction(()=>document.querySelector('#ready-status').textContent.includes('已就绪'));
   const frame=page.frames().find(f=>f.url().includes('index.html?demo=1'));
   const click=a=>frame.locator(`[data-action="${a}"]:visible`).first().click();
