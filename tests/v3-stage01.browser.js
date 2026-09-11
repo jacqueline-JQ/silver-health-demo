@@ -2,12 +2,16 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
   const BASE_URL=process.env.TEST_BASE_URL||'http://127.0.0.1:8765';
   const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
   const ok=(value,label)=>{if(!value)throw Error(`${label}；最后通过 ${checks.at(-1)}`);checks.push(label);};
-  const click=action=>page.locator(`[data-action="${action}"]:visible`).first().click();
+  const click=async action=>{const inside=page.locator(`#modal-root [data-action="${action}"]:visible`);return(await inside.count()?inside:page.locator(`[data-action="${action}"]:visible`)).first().click();};
   const nav=pageName=>page.locator(`[data-action="navigate"][data-page="${pageName}"]`).click();
   const closeFocus=async()=>{if(await page.locator('#modal-root .focus-sheet').count())await click('close-modal');};
   const switchTo=async accountId=>{await click('accounts');await page.locator(`[data-action="switch-account"][data-id="${accountId}"]`).click();await closeFocus();};
   const assertHome=async label=>ok(await page.locator('.nav-item.is-active[data-page="home"]').count()===1&&await page.locator('#modal-root [role="dialog"]').count()===0,label);
   const send=async text=>{await page.locator('#chat-input').fill(text);await page.locator('[data-form="chat"] button[type="submit"]').click();await page.waitForFunction(()=>!document.querySelector('.chat-status')?.textContent.includes('处理中'));};
+  const loadP006=async(time,accountId='elder-zhang')=>{
+    const eventId=await page.evaluate(({time,accountId})=>{const d=MedRules.prepareSeed(SILVER_SEED_DATA),e=d.doseEvents.find(e=>e.id==='event-metformin-breakfast'),p=d.medicationPlans.find(p=>p.id===e.planId);d.medicationPlans=[p];Object.assign(e,{status:'pending',recordedAt:null,recordedBy:null,actual:null,changes:[],changeToken:null,cancelledAt:null,snoozeUsed:0,snoozedAt:null,snoozeUntil:null,n3LastAt:null,started:true});d.doseEvents=[e];d.notificationLogs=[];d.demoTime=time;d.dateOffset=0;if(!MedRules.validData(d))throw Error('P0-06 fixture invalid');localStorage.setItem('silver-health-data-v1',JSON.stringify(d));sessionStorage.setItem('silver-health-view-v1',JSON.stringify({accountId}));return e.id;},{time,accountId});
+    await page.reload();await closeFocus();return eventId;
+  };
 
   await page.goto(`${BASE_URL}/index.html`);await page.evaluate(()=>{localStorage.clear();sessionStorage.clear();});await page.reload();await closeFocus();
   await nav('me');await click('clock');await page.locator('[name="time"]').fill('06:00');await page.getByRole('button',{name:'确认时间',exact:true}).click();await nav('home');
@@ -60,5 +64,17 @@ async(page,{artifactDir='output/playwright/mvp-v3-stage-01'}={})=>{
   await send('晚餐改为餐前');ok(await page.locator('.chat-conflict').count()===1,'修改晚餐不解除早餐餐时冲突');
   await send('早餐改为餐后');ok(await page.locator('.chat-conflict').count()===0,'明确早餐餐时后解除对应冲突');
   await page.screenshot({path:`${artifactDir}/p0-04-draft-edit.png`,animations:'disabled',fullPage:true});
-  ok(errors.length===0,'P0-01 至 P0-04 页面无脚本错误');return{passed:checks.length,checks,errors};
+
+  let p006Id=await loadP006('10:59');await nav('plans');await page.locator('[data-action="plan-tab"][data-value="history"]').click();await page.locator(`[data-action="task-detail"][data-id="${p006Id}"]`).click();
+  ok(await page.locator('#modal-root [data-action="declare"]').isDisabled()&&(await page.locator('#modal-root [data-not-taken-reason]').innerText())==='尚未到截止时间','截止前任务详情禁用未服用并显示统一原因');await click('close-modal');await nav('home');await click('assistant');await send('今天吃什么药');await page.locator(`[data-action="chat-task"][data-id="${p006Id}"]`).click();await send('还没吃');
+  ok(await page.evaluate(id=>JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents.find(e=>e.id===id).status,p006Id)==='pending'&&(await page.locator('.chat-stream').innerText()).includes('尚未到截止时间'),'截止前助手说明原因且不写未服用');
+
+  p006Id=await loadP006('11:00');await click('assistant');await send('今天吃什么药');await page.locator(`[data-action="chat-task"][data-id="${p006Id}"]`).click();await send('还没吃');
+  ok(await page.getByRole('heading',{name:'确认本次记录',exact:true}).count()===1&&await page.evaluate(id=>JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents.find(e=>e.id===id).status,p006Id)==='pending','恰好截止时助手先打开确认且不自动写入');await click('confirm-dose');ok(await page.evaluate(id=>JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents.find(e=>e.id===id).status,p006Id)==='not_taken','恰好截止时本人确认后可记录未服用');
+
+  p006Id=await loadP006('11:01');await nav('plans');await page.locator('[data-action="plan-tab"][data-value="history"]').click();await page.locator(`[data-action="task-detail"][data-id="${p006Id}"]`).click();await page.waitForTimeout(250);await click('declare');ok(await page.getByRole('heading',{name:'确认本次记录',exact:true}).count()===1&&await page.evaluate(id=>JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents.find(e=>e.id===id).status,p006Id)==='pending','截止后手动入口同样先确认');await click('confirm-dose');ok(await page.evaluate(id=>JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents.find(e=>e.id===id).status,p006Id)==='not_taken','截止后手动确认保存未服用');
+
+  p006Id=await loadP006('11:00','child-li');await nav('plans');await page.locator('[data-action="plan-tab"][data-value="history"]').click();await page.locator(`[data-action="task-detail"][data-id="${p006Id}"]`).click();ok(await page.locator('#modal-root [data-action="declare"]').count()===0,'子女任务详情没有未服用入口');await click('close-modal');const childBefore=await page.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents));await nav('home');await click('assistant');await send('还没吃');ok((await page.locator('.chat-stream').innerText()).includes('只有长辈本人')&&await page.evaluate(before=>JSON.stringify(JSON.parse(localStorage.getItem('silver-health-data-v1')).doseEvents)===before,childBefore),'子女助手尝试被拒绝且任务零变更');
+  await page.screenshot({path:`${artifactDir}/p0-06-not-taken.png`,animations:'disabled',fullPage:true});
+  ok(errors.length===0,'P0-01 至 P0-06 页面无脚本错误');return{passed:checks.length,checks,errors};
 }

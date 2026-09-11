@@ -12,6 +12,24 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../seed-data.js'), 'utf
 const seed = sandbox.window.SILVER_SEED_DATA;
 let count = 0;
 function test(name, fn) { fn(); console.log(`PASS V3-M${String(++count).padStart(2, '0')} ${name}`); }
+function eligibilityCase(slot = '早餐') {
+  const data = R.prepareSeed(seed);
+  data.medicationPlans = [];
+  data.doseEvents = [];
+  data.notificationLogs = [];
+  R.setClock(data, 0, slot === '睡前' ? '19:55' : '04:55');
+  const plan = R.savePlan(data, 'elder-zhang', {
+    name: `P0-06 ${slot}测试药`, doseValue: 1, doseUnit: '片', slots: [slot],
+    slotSettings: { [slot]: { time: R.SLOTS[slot], reminderTime: R.SLOTS[slot], missedAlertTime: R.MISSED_ALERTS[slot], meal: '' } },
+    startDate: R.DAY, duration: '长期服用', endDate: '', note: ''
+  }, 'profile-zhang');
+  return { data, plan, event: data.doseEvents.find(event => event.planId === plan.id) };
+}
+function rejectedWithoutMutation(data, action, pattern) {
+  const before = R.clone(data);
+  assert.throws(action, pattern);
+  assert.deepEqual(data, before);
+}
 
 test('原生种子是有效 version 3 且重复准备不增加历史', () => {
   assert.equal(seed.version, 3);
@@ -140,6 +158,94 @@ test('version 3 核心字段、引用与通知状态严格校验', () => {
   data = R.migrate(v2());data.doseEvents[0].planId = 'missing';cases.push(data);
   for (const invalid of cases) assert.equal(R.validData(invalid), false);
   const broken = v2();broken.doseEvents[0].planId = 'missing';assert.throws(() => R.migrate(broken), /invalid/);
+});
+
+test('P0-06 未服用按原截止完整时刻开放且拒绝写入零变更', () => {
+  let { data, event } = eligibilityCase();
+  assert.deepEqual(R.notTakenEligibility(data, 'elder-zhang', event, R.stamp(R.DAY, '10:59')), { allowed: false, reason: '尚未到截止时间' });
+  assert.deepEqual(R.notTakenEligibility(data, 'elder-zhang', event, R.stamp(R.DAY, '11:00')), { allowed: true, reason: '' });
+  assert.deepEqual(R.notTakenEligibility(data, 'elder-zhang', event, R.stamp(R.DAY, '11:01')), { allowed: true, reason: '' });
+  R.setClock(data, 0, '10:59');
+  rejectedWithoutMutation(data, () => R.recordDose(data, 'elder-zhang', event.id, 'not_taken'), /尚未到截止时间/);
+  R.setClock(data, 0, '11:00');
+  R.recordDose(data, 'elder-zhang', event.id, 'not_taken', { operationId: 'deadline-declaration' });
+  assert.equal(event.status, 'not_taken');
+
+  ({ data, event } = eligibilityCase('睡前'));
+  assert.equal(event.deadlineAt, R.stamp('2026-09-14', '00:00'));
+  R.setClock(data, 0, '23:59');
+  rejectedWithoutMutation(data, () => R.recordDose(data, 'elder-zhang', event.id, 'not_taken'), /尚未到截止时间/);
+  R.setClock(data, 1, '00:00');
+  assert.equal(R.notTakenEligibility(data, 'elder-zhang', event).allowed, true);
+  R.recordDose(data, 'elder-zhang', event.id, 'not_taken');
+  assert.equal(event.status, 'not_taken');
+});
+
+test('P0-06 延后保护、权限、取消与既有事实统一拒绝', () => {
+  let { data, event } = eligibilityCase();
+  R.setClock(data, 0, '10:50');
+  R.snooze(data, 'elder-zhang', event.id, 30);
+  R.setClock(data, 0, '11:00');
+  assert.match(R.notTakenEligibility(data, 'elder-zhang', event).reason, /延后保护中/);
+  rejectedWithoutMutation(data, () => R.recordDose(data, 'elder-zhang', event.id, 'not_taken'), /延后保护中/);
+  R.setClock(data, 0, '11:19');
+  assert.equal(R.notTakenEligibility(data, 'elder-zhang', event).allowed, false);
+  R.setClock(data, 0, '11:20');
+  assert.equal(R.notTakenEligibility(data, 'elder-zhang', event).allowed, true);
+
+  ({ data, event } = eligibilityCase());
+  R.setClock(data, 0, '11:00');
+  data.accounts.push({ id: 'elder-wang', name: '王叔叔', role: 'elder', age: 71, relation: '本人', avatar: '王', fontMode: 'elder', profileId: 'profile-wang', familyId: 'family-silver-2026' });
+  assert.match(R.notTakenEligibility(data, 'child-li', event).reason, /只有长辈本人/);
+  assert.match(R.notTakenEligibility(data, 'elder-wang', event).reason, /只有长辈本人/);
+  rejectedWithoutMutation(data, () => R.recordDose(data, 'child-li', event.id, 'not_taken'), /只有长辈本人/);
+  rejectedWithoutMutation(data, () => R.recordDose(data, 'elder-wang', event.id, 'not_taken'), /只有长辈本人/);
+  event.cancelledAt = R.now(data);
+  const cancelled = R.clone(data);
+  assert.equal(R.notTakenEligibility(data, 'elder-zhang', event).reason, '任务已取消');
+  assert.throws(() => R.recordDose(data, 'elder-zhang', event.id, 'not_taken'), /任务已取消/);
+  assert.deepEqual(data, cancelled);
+
+  ({ data, event } = eligibilityCase());
+  R.setClock(data, 0, '11:00');
+  R.recordDose(data, 'elder-zhang', event.id, 'taken');
+  assert.match(R.notTakenEligibility(data, 'elder-zhang', event).reason, /已有记录/);
+  rejectedWithoutMutation(data, () => R.recordDose(data, 'elder-zhang', event.id, 'not_taken'), /更正入口/);
+});
+
+test('P0-06 保留任务、幂等重试与截止后更正保持审计版本', () => {
+  let { data, plan, event } = eligibilityCase();
+  R.setClock(data, 0, '08:00');
+  R.stopPlan(data, 'elder-zhang', plan.id);
+  assert.equal(event.cancelledAt, null);
+  R.setClock(data, 0, '11:00');
+  assert.equal(R.notTakenEligibility(data, 'elder-zhang', event).allowed, true);
+
+  ({ data, plan, event } = eligibilityCase());
+  R.setClock(data, 0, '08:00');
+  R.savePlan(data, 'elder-zhang', { ...R.clone(plan), name: '编辑后的父计划', version: plan.version }, 'profile-zhang', plan.id);
+  assert.equal(event.snapshot.name, 'P0-06 早餐测试药');
+  R.setClock(data, 0, '11:00');
+  const first = R.recordDose(data, 'elder-zhang', event.id, 'not_taken', { operationId: 'same-operation' });
+  const afterFirst = R.clone(data);
+  const retry = R.recordDose(data, 'elder-zhang', event.id, 'not_taken', { operationId: 'same-operation' });
+  assert.equal(first.token, 'same-operation');
+  assert.equal(retry.duplicate, true);
+  assert.deepEqual(data, afterFirst);
+
+  ({ data, event } = eligibilityCase());
+  R.setClock(data, 0, '08:00');
+  R.recordDose(data, 'elder-zhang', event.id, 'taken', { operationId: 'initial-fact' });
+  R.setClock(data, 0, '10:59');
+  rejectedWithoutMutation(data, () => R.recordDose(data, 'elder-zhang', event.id, 'not_taken', { correction: true }), /原任务截止时间/);
+  R.setClock(data, 0, '11:00');
+  R.recordDose(data, 'elder-zhang', event.id, 'not_taken', { correction: true, operationId: 'history-correction' });
+  assert.equal(event.status, 'not_taken');
+  assert.equal(event.changes.length, 2);
+  assert.equal(event.changes[1].kind, '更正');
+  assert.equal(event.changes[1].before.status, 'taken');
+  assert.equal(event.changes[0].id, 'initial-fact');
+  assert(R.validData(data));
 });
 
 console.log(`PASS ${count} version 3 migration groups`);

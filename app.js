@@ -241,6 +241,7 @@
   function processChat(c,text,source) {
     const detected=C.intent(text,c.intent),inferred=detected!=='medical'&&hasPlanInput(c.plan)&&C.planModification(text)?'plan':detected;c.status='正在询问';
     if(inferred==='medical'){chatMessage(c,'我可以整理和查询已保存的安排，不能推荐药物、增减剂量或作健康判断。请查看已有计划；涉及用药决定请向医生或药师确认。');return;}
+    if(account().role==='child'&&inferred==='record'&&C.declaration(text).fact==='not_taken'){const e=data.doseEvents.find(e=>e.id===c.selectedId&&e.profileId===c.targetId);const eligibility=R.notTakenEligibility(data,view.accountId,e);c.cards=[];c.selectedId=null;c.status='无权限';chatMessage(c,`${eligibility.reason}。文字、示例语音和任务卡都遵守同一权限。`);return;}
     if(account().role==='child'&&['record','makeup','snooze','correct'].includes(inferred)){c.cards=[];c.selectedId=null;c.status='无权限';chatMessage(c,'只有长辈本人可以声明、补记、更正或延后。文字、示例语音和任务卡都遵守同一权限。');return;}
     if(inferred==='plan') {
       c.intent='plan';c.cards=[];c.selectedId=null;const result=C.parsePlan(text,c.plan);c.plan=result.draft;
@@ -277,9 +278,13 @@
       const declaration=C.declaration(text,e.snapshot.name);
       if(declaration.ambiguous){c.ambiguous=true;chatMessage(c,'这一次到现在还没有服用，还是后来已经服用了？未明确前保留原记录。');return;}
       if(declaration.fact){if(resolved(e)){chatMessage(c,'这次已有声明。若需修改，请进入“更正记录”，不会重复记录。');return;}
-        if(declaration.fact==='skipped'){openModal('dose-confirm',{eventId:e.id,status:'skipped',chatKey:c.key,actual:text});return;}
+        if(declaration.fact==='not_taken'){
+          const eligibility=R.notTakenEligibility(data,view.accountId,e);
+          if(!eligibility.allowed){c.status='暂不能记录';chatMessage(c,`${eligibility.reason}。任务保持待打卡，不会自动记录为未服用。`);return;}
+        }
         const details=declaration.details||[],differs=details.some(part=>part.kind==='dose'&&(part.value!==Number(e.snapshot.doseValue)||part.unit!==e.snapshot.doseUnit));
         const actual=details.length?`用户自述（未经核验）：${text}${differs?'；自述用量与计划不同，仅保留本人声明，不生成剩余剂量任务。':''}`:null;
+        if(['not_taken','skipped'].includes(declaration.fact)){openModal('dose-confirm',{eventId:e.id,status:declaration.fact,chatKey:c.key,actual});return;}
         recordDose(e.id,declaration.fact,{actual,inputSource:source,operationId:id('chat-record')});return;}
       chatMessage(c,'请明确选择已服用、未服用或本次无需服用；不用补填实际时间和数量。');return;
     }
@@ -448,11 +453,12 @@
 
   function doseActions(event) {
     if (account().role === 'child') return reminderButton(event);
-    if (!R.canDeclare(data, view.accountId, event)) return '<p class="helper-text">尚未到此时段或任务已取消</p>';
+    const notTaken = R.notTakenEligibility(data, view.accountId, event);
+    if (!R.canDeclare(data, view.accountId, event)) return `<p class="helper-text" data-not-taken-reason>${esc(notTaken.reason||'尚未到此时段或任务已取消')}</p>`;
     if (resolved(event)) return button('更正记录', 'correct-dose', 'text-button', `data-id="${event.id}"`);
     const reason = R.snoozeReason(data, view.accountId, event);
     const delayPreview=chatSession()&&!reason?`<p class="helper-text">5分钟后：${displayTime(R.plusMinutes(now(),5))}<br>30分钟后：${displayTime(R.plusMinutes(now(),30))}</p>`:'';
-    return `<div class="dose-actions">${button(`${icon('check')}已服用`, 'take', 'button-primary', `data-id="${event.id}"`)}${button('未服用', 'declare', 'button-secondary', `data-id="${event.id}" data-status="not_taken"`)}${button('本次无需服用', 'dose-confirm', 'button-secondary', `data-id="${event.id}" data-status="skipped"`)}</div>${delayPreview}<div class="snooze-actions">${[5, 30].map(n => button(`延后 ${n} 分钟`, 'snooze', 'button-secondary button-small', `data-id="${event.id}" data-minutes="${n}" ${reason ? 'disabled aria-disabled="true"' : ''}`)).join('')}</div><p class="helper-text">${esc(reason ? (event.snoozeUsed ? '* 延后机会已用完，请按实际情况记录' : reason) : '* 本次任务仅有 1 次延后机会')}</p>`;
+    return `<div class="dose-actions">${button(`${icon('check')}已服用`, 'take', 'button-primary', `data-id="${event.id}"`)}${button('未服用', 'declare', 'button-secondary', `data-id="${event.id}" data-status="not_taken" ${notTaken.allowed ? '' : 'disabled aria-disabled="true"'}`)}${button('本次无需服用', 'dose-confirm', 'button-secondary', `data-id="${event.id}" data-status="skipped"`)}</div>${notTaken.allowed?'':`<p class="helper-text" data-not-taken-reason>${esc(notTaken.reason)}</p>`}${delayPreview}<div class="snooze-actions">${[5, 30].map(n => button(`延后 ${n} 分钟`, 'snooze', 'button-secondary button-small', `data-id="${event.id}" data-minutes="${n}" ${reason ? 'disabled aria-disabled="true"' : ''}`)).join('')}</div><p class="helper-text">${esc(reason ? (event.snoozeUsed ? '* 延后机会已用完，请按实际情况记录' : reason) : '* 本次任务仅有 1 次延后机会')}</p>`;
   }
 
   function recordDetails(event) {
@@ -717,7 +723,9 @@
     }
     if (m.type === 'dose-confirm') {
       const event = data.doseEvents.find(e => e.id === m.eventId);
-      return [m.correction ? '确认更正' : '确认本次记录', `<p><strong>${esc(planFor(event).name)}</strong> · ${event.date} ${event.slot} ${event.scheduledTime}</p><p>将记录为：<strong>${STATUS[m.status]}</strong></p><div class="confirm-banner">${icon('info')}仅记录您本次的实际安排，不代表系统建议停药。</div><div class="form-footer">${button('取消', 'close-modal', 'button-secondary')}${button(m.correction ? '确认更正' : '确认记录', 'confirm-dose')}</div>`];
+      if(!event||!canAccess(event.profileId))return ['无法记录','<p>任务不存在或无权访问。</p>'];
+      const eligibility=m.correction?R.correctionEligibility(data,view.accountId,event):m.status==='not_taken'?R.notTakenEligibility(data,view.accountId,event):{allowed:true,reason:''};
+      return [m.correction ? '确认更正' : '确认本次记录', `<p><strong>${esc(planFor(event).name)}</strong> · ${event.date} ${event.slot} ${event.scheduledTime}</p><p>将记录为：<strong>${STATUS[m.status]}</strong></p><div class="confirm-banner">${icon('info')}仅记录您本次的实际安排，不代表系统建议停药。</div>${eligibility.allowed?'':`<p class="helper-text" data-not-taken-reason>${esc(eligibility.reason)}</p>`}<div class="form-footer">${button('取消', 'close-modal', 'button-secondary')}${button(m.correction ? '确认更正' : '确认记录', 'confirm-dose', 'button-primary', eligibility.allowed?'':'disabled aria-disabled="true"')}</div>`];
     }
     if (m.type === 'plan-detail') {
       const p = data.medicationPlans.find(p => p.id === m.planId);
@@ -1077,7 +1085,11 @@
       syncChatDraft();renderModal(); return;
     }
     if (action === 'take') return recordDose(itemId, 'taken');
-    if (action === 'declare' && target.dataset.status === 'not_taken') return recordDose(itemId, 'not_taken');
+    if (action === 'declare' && target.dataset.status === 'not_taken') {
+      const e=data.doseEvents.find(e=>e.id===itemId),eligibility=R.notTakenEligibility(data,view.accountId,e);
+      if(!eligibility.allowed){toast(eligibility.reason,'warning');return;}
+      return openModal('dose-confirm',{eventId:itemId,status:'not_taken',focusContext:modal?.type==='focus'?clone(modal):null,chatKey:chatSession()?.key});
+    }
     if (['task-detail', 'correct-dose'].includes(action)) {
       const e = data.doseEvents.find(e => e.id === itemId);
       if (e && canAccess(e.profileId) && (action !== 'correct-dose' || account().role === 'elder')) openModal(action, { eventId: itemId,chatKey:chatSession()?.key,targetId:e.profileId });

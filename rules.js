@@ -33,6 +33,22 @@
   };
   const canDeclare = (data, accountId, e) => own(data, accountId, e) && canAccess(data, accountId, e.profileId) && !e.cancelledAt && now(data) >= e.startAt && now(data) >= e.createdAt;
   const protectedAt = (e, at) => !resolved(e) && !!e.snoozeUntil && !!e.snoozedAt && e.snoozedAt <= at && at < e.snoozeUntil;
+  function notTakenEligibility(data, accountId, e, at = now(data)) {
+    if (!e || !own(data, accountId, e) || !canAccess(data, accountId, e.profileId)) return { allowed: false, reason: '只有长辈本人可记录未服用' };
+    if (e.cancelledAt) return { allowed: false, reason: '任务已取消' };
+    if (at < e.startAt || at < e.createdAt) return { allowed: false, reason: '任务尚未开始' };
+    if (resolved(e)) return { allowed: false, reason: '已有记录，请从更正入口处理' };
+    if (protectedAt(e, at)) return { allowed: false, reason: '延后保护中，请在保护结束后按实际情况记录' };
+    if (at < e.deadlineAt) return { allowed: false, reason: '尚未到截止时间' };
+    return { allowed: true, reason: '' };
+  }
+  function correctionEligibility(data, accountId, e, at = now(data)) {
+    if (!e || !own(data, accountId, e) || !canAccess(data, accountId, e.profileId)) return { allowed: false, reason: '只有长辈本人可更正记录' };
+    if (e.cancelledAt) return { allowed: false, reason: '任务已取消' };
+    if (!resolved(e)) return { allowed: false, reason: '当前没有可更正的记录' };
+    if (at < e.deadlineAt) return { allowed: false, reason: '尚未到原任务截止时间' };
+    return { allowed: true, reason: '' };
+  }
   const reminderTime = setting => setting?.reminderTime ?? setting?.time;
   const safeMissedAlert = (slot, reminder, preferred = MISSED_ALERTS[slot]) => validTime(reminder) && validTime(preferred) && minute(preferred) > minute(reminder) && minute(preferred) < RANGES[slot][1] ? preferred : null;
   const slotSetting = (slot, setting = {}, { migrated = false } = {}) => {
@@ -149,10 +165,19 @@
   const declaration = e => ({ status: e.status, recordedAt: e.recordedAt, recordedBy: e.recordedBy, actual: clone(e.actual), changeToken: e.changeToken || null });
   function recordDose(data, accountId, eventId, status, options = {}) {
     const e = data.doseEvents.find(e => e.id === eventId);
-    if (!canDeclare(data, accountId, e)) throw Error('只有长辈本人可记录已开始且仍保留的任务');
+    if (!e || !own(data, accountId, e) || !canAccess(data, accountId, e.profileId)) throw Error('只有长辈本人可记录已开始且仍保留的任务');
     if (!FACTS.includes(status)) throw Error('请选择明确的本人声明');
     if (options.operationId && e.changes.some(c => c.id === options.operationId)) return { eventId, token: options.operationId, before: declaration(e), duplicate: true };
-    if (resolved(e) && !options.correction) throw Error('此任务已有记录，请从更正入口处理');
+    if (options.correction) {
+      const eligibility = correctionEligibility(data, accountId, e);
+      if (!eligibility.allowed) throw Error(eligibility.reason);
+    } else if (status === 'not_taken') {
+      const eligibility = notTakenEligibility(data, accountId, e);
+      if (!eligibility.allowed) throw Error(eligibility.reason);
+    } else {
+      if (!canDeclare(data, accountId, e)) throw Error('只有长辈本人可记录已开始且仍保留的任务');
+      if (resolved(e)) throw Error('此任务已有记录，请从更正入口处理');
+    }
     if (e.changes.at(-1)?.recordedAt > now(data)) throw Error('演示时钟早于已有记录，请先向前调整时间');
     const before = declaration(e);
     const token = options.operationId || id('change');
@@ -388,5 +413,5 @@
         (n.legacy===true || (['N1','N2','N3'].includes(n.kind)&&d.accounts.some(a=>a.id===n.recipientId)&&validDate(n.date)&&d.doseEvents.some(e=>e.id===n.eventId&&e.date===n.date)&&typeof n.round==='string'&&typeof n.operationId==='string'&&validStamp(n.createdAt)&&['delivered','failed','pending','suppressed'].includes(n.deliveryState)&&Number.isInteger(n.deliveryAttempts)&&n.deliveryAttempts>0&&(n.kind!=='N2'||(['early','deadline'].includes(n.warningRound)&&n.receiverId===n.recipientId&&n.notificationId===n.id&&validStamp(n.sentAt))))));
     } catch { return false; }
   }
-  return { DAY, SLOTS, MISSED_ALERTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult, notificationDefaults, simulatedRemote, notificationEligible, notificationRound, evaluateNotifications, sendN3, retryNotifications, syncSimulation, focusCandidates };
+  return { DAY, SLOTS, MISSED_ALERTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, notTakenEligibility, correctionEligibility, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult, notificationDefaults, simulatedRemote, notificationEligible, notificationRound, evaluateNotifications, sendN3, retryNotifications, syncSimulation, focusCandidates };
 });

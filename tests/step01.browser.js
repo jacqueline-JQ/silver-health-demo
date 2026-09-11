@@ -25,10 +25,10 @@ async (page, {artifactDir='output/playwright/step-01'}={}) => {
   ok((await data()).doseEvents.find(e=>e.id===bedtime.id).status==='taken','一键声明已服用');
   await click('undo');
   saved=await data(); ok(saved.doseEvents.find(e=>e.id===bedtime.id).status==='pending' && saved.doseEvents.find(e=>e.id===bedtime.id).snoozeUsed===1,'撤销不恢复延后机会');
-  await page.locator('[data-action="declare"][data-id="event-atorvastatin-bedtime"]').click();
-  await page.locator('[data-action="correct-dose"][data-id="event-atorvastatin-bedtime"]').click();
+  ok(await page.locator('[data-action="declare"][data-id="event-atorvastatin-bedtime"]').isDisabled() && await page.getByText(/延后保护中/).count()>0,'睡前延后保护内不能记录未服用');
+  await click('history');await page.locator('[data-action="correct-dose"][data-id="event-metformin-breakfast"]').click();
   await page.locator('[data-action="choose-correction"][data-status="skipped"]').click(); await click('confirm-dose');
-  saved=await data(); ok(saved.doseEvents.find(e=>e.id===bedtime.id).status==='skipped' && saved.doseEvents.find(e=>e.id===bedtime.id).changes.length===4,'更正保留前后记录');
+  saved=await data(); const breakfast=saved.doseEvents.find(e=>e.id==='event-metformin-breakfast');ok(breakfast.status==='skipped' && breakfast.changes.length===2,'截止后更正保留前后记录');
   await switchTo('child-li');
   ok(await page.locator('[data-action="take"], [data-action="snooze"], [data-action="correct-dose"]').count()===0,'子女无代打更正延后按钮');
   await page.locator('[data-action="task-detail"][data-id="event-atorvastatin-bedtime"]').click();
