@@ -1,0 +1,173 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - link "药安心" [ref=e3] [cursor=pointer]:
+      - /url: index.html
+    - generic [ref=e7]: 家庭协同 · 比赛演示
+  - main [ref=e8]:
+    - region "模拟手机舞台" [ref=e9]:
+      - generic [ref=e11]:
+        - generic "模拟状态栏" [ref=e13]:
+          - generic [ref=e14]: 08:00
+          - generic "模拟满格信号与电量" [ref=e16]: ▂▄▆█
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - paragraph [ref=e25]: 9月13日 星期日
+            - strong [ref=e26]: 08:00
+            - text: 留一点安心，给家人。
+          - generic [ref=e27]:
+            - button "药安心" [ref=e28] [cursor=pointer]
+            - generic [ref=e32]: 日历
+            - generic [ref=e36]: 天气
+            - generic [ref=e40]: 相机
+            - generic [ref=e44]: 信息
+            - generic [ref=e48]: 设置
+          - generic [aria-hidden] [ref=e52]: ⌕ 搜索
+          - generic "桌面装饰图标" [ref=e53]
+        - iframe [active] [ref=e62]:
+          - generic [ref=f1e614]:
+            - generic [ref=f1e615]:
+              - generic [ref=f1e616]:
+                - generic [ref=f1e617]: 本地演示
+                - generic [ref=f1e618]: 张阿姨 · 长辈
+              - button "继续未完成的输入" [ref=f1e620] [cursor=pointer]
+              - generic [ref=f1e621]:
+                - banner [ref=f1e622]:
+                  - generic [ref=f1e623]:
+                    - generic [ref=f1e624]: 药安心
+                    - generic [ref=f1e628]:
+                      - button "查看打卡记录" [ref=f1e629] [cursor=pointer]
+                      - button "切换演示账号" [ref=f1e632] [cursor=pointer]
+                  - heading "我的" [active] [level=1] [ref=f1e635]
+                - generic [ref=f1e636]:
+                  - generic [ref=f1e637]: 张
+                  - generic [ref=f1e638]:
+                    - heading "张阿姨" [level=2] [ref=f1e639]
+                    - paragraph [ref=f1e640]: 68 岁 · 长辈账号
+                  - generic [ref=f1e641]: 演示账号
+                - generic [ref=f1e642]:
+                  - heading "显示设置" [level=2] [ref=f1e644]
+                  - generic [ref=f1e646]:
+                    - strong [ref=f1e651]: 字号模式
+                    - group "字号模式" [ref=f1e652]:
+                      - button "标准" [ref=f1e653] [cursor=pointer]
+                      - button "大字" [pressed] [ref=f1e654] [cursor=pointer]
+                - generic [ref=f1e655]:
+                  - heading "家庭与账号" [level=2] [ref=f1e657]
+                  - generic [ref=f1e658]:
+                    - button "张阿姨的健康小家 张阿姨" [ref=f1e659] [cursor=pointer]:
+                      - generic [ref=f1e663]:
+                        - strong [ref=f1e664]: 张阿姨的健康小家
+                        - generic [ref=f1e665]: 张阿姨
+                    - button "首次使用引导 新建本地演示账号" [ref=f1e668] [cursor=pointer]:
+                      - generic [ref=f1e672]:
+                        - strong [ref=f1e673]: 首次使用引导
+                        - generic [ref=f1e674]: 新建本地演示账号
+                    - button [ref=f1e677] [cursor=pointer]:
+                      - strong [ref=f1e682]: 模拟提醒记录
+                - generic [ref=f1e685]:
+                  - heading "切换演示账号" [level=2] [ref=f1e687]
+                  - generic [ref=f1e688]:
+                    - button "张 张阿姨 长辈端" [pressed] [ref=f1e689] [cursor=pointer]:
+                      - generic [ref=f1e690]: 张
+                      - generic [ref=f1e691]:
+                        - strong [ref=f1e692]: 张阿姨
+                        - generic [ref=f1e693]: 长辈端
+                    - button "李 小李 子女端" [ref=f1e694] [cursor=pointer]:
+                      - generic [ref=f1e695]: 李
+                      - generic [ref=f1e696]:
+                        - strong [ref=f1e697]: 小李
+                        - generic [ref=f1e698]: 子女端
+                - generic [ref=f1e699]:
+                  - heading "演示设置" [level=2] [ref=f1e701]
+                  - generic [ref=f1e702]:
+                    - button "模拟通知设置 已开启 · 详细预览" [ref=f1e703] [cursor=pointer]:
+                      - generic [ref=f1e707]:
+                        - strong [ref=f1e708]: 模拟通知设置
+                        - generic [ref=f1e709]: 已开启 · 详细预览
+                    - button "演示时间 2026-09-13 08:00" [ref=f1e712] [cursor=pointer]:
+                      - generic [ref=f1e716]:
+                        - strong [ref=f1e717]: 演示时间
+                        - generic [ref=f1e718]: 2026-09-13 08:00
+                    - button [ref=f1e721] [cursor=pointer]:
+                      - strong [ref=f1e726]: 演示与隐私说明
+                    - button [ref=f1e729] [cursor=pointer]:
+                      - strong [ref=f1e734]: 恢复初始演示数据
+                - complementary [ref=f1e737]:
+                  - generic [ref=f1e740]: 仅含演示数据，不提供医疗建议，不应用于真实用药决策。
+              - contentinfo [ref=f1e741]: 药安心 · 家庭协同
+            - navigation "主导航" [ref=f1e742]:
+              - button "服药打卡" [ref=f1e743] [cursor=pointer]
+              - button "用药信息" [ref=f1e748] [cursor=pointer]
+              - button "身体数据" [ref=f1e753] [cursor=pointer]
+              - button "我的" [ref=f1e758] [cursor=pointer]
+            - status
+        - generic [aria-hidden]:
+          - button:
+            - generic:
+              - strong: 药安心
+              - generic: 刚刚
+            - strong: 该吃药啦！
+            - generic: 2026-09-13 睡前 · 阿托伐他汀钙片 · 计划 1 片 · 21:00 提醒，目前尚未记录。请按实际情况记录。
+          - button: ×
+        - button "返回模拟桌面" [ref=e73] [cursor=pointer]
+      - paragraph [ref=e75]: iOS 18 风格网页演示 · 辅助图标仅作桌面示意
+    - complementary "比赛演示控制区" [ref=e76]:
+      - text: 可交互原型 · 本地演示
+      - heading "一份记录， 两份安心。" [level=1] [ref=e77]: 一份记录，两份安心。
+      - paragraph [ref=e78]: 从家庭建计划，到长辈本人打卡。桌面、提醒与应用共同完成这段流程。
+      - status [ref=e79]: 已就绪 · 张阿姨 · 长辈端
+      - group "模拟系统" [ref=e80]:
+        - button "iOS" [pressed] [ref=e81] [cursor=pointer]
+        - button "鸿蒙" [ref=e82] [cursor=pointer]
+        - button "安卓" [ref=e83] [cursor=pointer]
+      - generic [ref=e84]:
+        - heading "01 · 当前会话" [level=2] [ref=e85]
+        - generic [ref=e86]: 演示账号
+        - combobox "演示账号" [ref=e87]:
+          - option "张阿姨 · 长辈" [selected]
+          - option "小李 · 子女"
+        - generic [ref=e88]: 当前长辈
+        - combobox "当前长辈" [disabled] [ref=e89]:
+          - option "张阿姨" [selected]
+        - generic [ref=e90]:
+          - button "打开应用" [ref=e91] [cursor=pointer]
+          - button "返回桌面" [ref=e92] [cursor=pointer]
+      - generic [ref=e93]:
+        - heading "02 · 受控演示时间" [level=2] [ref=e94]
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - text: 日期偏移
+            - spinbutton "日期偏移" [ref=e97]: "0"
+          - generic [ref=e98]:
+            - text: 北京时间
+            - textbox "北京时间" [ref=e99]: 08:00
+        - button "应用时间" [ref=e100] [cursor=pointer]
+        - generic "演示时刻预设" [ref=e101]:
+          - button "早餐前" [ref=e102] [cursor=pointer]
+          - button "早餐到点" [ref=e103] [cursor=pointer]
+          - button "早餐超时" [ref=e104] [cursor=pointer]
+          - button "午餐15:50" [ref=e105] [cursor=pointer]
+          - button "16:20" [ref=e106] [cursor=pointer]
+          - button "23:55" [ref=e107] [cursor=pointer]
+          - button "次日00:10" [ref=e108] [cursor=pointer]
+      - generic [ref=e109]:
+        - heading "03 · 模拟系统通知" [level=2] [ref=e110]
+        - generic [ref=e111]:
+          - button "N1 到点提醒" [ref=e112] [cursor=pointer]
+          - button "N2 超时提醒" [ref=e113] [cursor=pointer]
+          - button "N3 子女提醒" [ref=e114] [cursor=pointer]
+        - paragraph [ref=e115]: 接收账号需显式切换。N3 由子女在应用中点击“提醒 TA”。
+        - generic [ref=e116]: 当前账号的通知
+        - combobox "当前账号的通知" [ref=e117]:
+          - option "N1 · 2026-09-13 · 该吃药啦！" [selected]
+        - generic [ref=e118]:
+          - button "重播横幅" [ref=e119] [cursor=pointer]
+          - button "打开关联记录" [ref=e120] [cursor=pointer]
+        - paragraph [ref=e121]: 已展示（模拟） · 1 条逻辑通知
+      - group [ref=e122]:
+        - generic "模拟设置与异常场景" [ref=e123] [cursor=pointer]
+        - option "正常模拟" [selected]
+        - option "离线／待同步模拟"
+        - option "通知发送失败模拟"
+      - status [ref=e124]: 当前无符合资格的任务：请检查时刻、记录或延后保护
+      - paragraph [ref=e125]: 仅供演示，不提供医疗建议，不用于真实用药决策。

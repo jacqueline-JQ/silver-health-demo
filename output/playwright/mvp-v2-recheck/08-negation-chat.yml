@@ -1,0 +1,349 @@
+- generic [ref=e444]:
+  - generic [ref=e445]:
+    - generic [ref=e446]:
+      - generic [ref=e447]: 本地演示 · 2026-09-13 21:15
+      - generic [ref=e448]: 小李 · 子女
+    - generic [ref=e449]:
+      - banner [ref=e450]:
+        - generic [ref=e451]:
+          - generic [ref=e452]: 药安心
+          - generic [ref=e456]:
+            - button "查看打卡记录" [ref=e457] [cursor=pointer]
+            - button "切换演示账号" [ref=e460] [cursor=pointer]
+        - generic [ref=e463]:
+          - paragraph [ref=e464]: 小李，您好 · 2026-09-13
+          - heading "首页看板" [level=1] [ref=e465]
+          - paragraph [ref=e466]: 家人的记录，放在一起看
+        - button "切换长辈档案" [ref=e467] [cursor=pointer]:
+          - generic [ref=e468]: 张
+          - generic [ref=e469]: 张阿姨 · 母亲
+      - generic [ref=e472]:
+        - generic [ref=e473]:
+          - strong [ref=e474]: 2/4
+          - generic [ref=e475]: 已记录 · 服用 2
+        - generic [ref=e476]:
+          - strong [ref=e477]: "1"
+          - generic [ref=e478]: 待记录
+        - generic [ref=e479]:
+          - strong [ref=e480]: "1"
+          - generic [ref=e481]: 未按时打卡
+      - button "未按时打卡提醒（1）" [ref=e483] [cursor=pointer]
+      - generic [ref=e488]:
+        - generic [ref=e489]:
+          - heading "今日用药" [level=2] [ref=e490]
+          - button "添加药品" [ref=e491] [cursor=pointer]
+        - generic [ref=e494]:
+          - generic [ref=e495]:
+            - generic [ref=e496]: 早餐
+            - generic [ref=e499]:
+              - generic [ref=e500]:
+                - strong [ref=e501]: 氨氯地平片
+                - generic [ref=e502]: 计划 1 片/次 · 提醒 08:00
+                - paragraph [ref=e503]: 2026-09-13 08:12记录 · 张阿姨
+              - generic [ref=e504]:
+                - generic [ref=e505]: 已服用
+                - button "查看当次" [ref=e506] [cursor=pointer]
+                - generic [ref=e507]:
+                  - button "提醒 TA（模拟）" [disabled] [ref=e508]
+                  - generic [ref=e511]: 已有记录
+            - generic [ref=e512]:
+              - generic [ref=e513]:
+                - strong [ref=e514]: 二甲双胍片
+                - generic [ref=e515]: 计划 1 片/次 · 提醒 08:00
+                - paragraph [ref=e516]: 2026-09-13 08:13记录 · 张阿姨
+              - generic [ref=e517]:
+                - generic [ref=e518]: 已服用
+                - button "查看当次" [ref=e519] [cursor=pointer]
+                - generic [ref=e520]:
+                  - button "提醒 TA（模拟）" [disabled] [ref=e521]
+                  - generic [ref=e524]: 已有记录
+          - generic [ref=e525]:
+            - generic [ref=e526]: 晚餐
+            - generic [ref=e529]:
+              - generic [ref=e530]:
+                - strong [ref=e531]: 二甲双胍片
+                - generic [ref=e532]: 计划 1 片/次 · 提醒 18:30
+              - generic [ref=e533]:
+                - generic [ref=e534]: 未按时打卡
+                - button "查看当次" [ref=e535] [cursor=pointer]
+                - button "提醒 TA（模拟）" [ref=e537] [cursor=pointer]
+          - generic [ref=e540]:
+            - generic [ref=e541]: 睡前
+            - generic [ref=e544]:
+              - generic [ref=e545]:
+                - strong [ref=e546]: 阿托伐他汀钙片
+                - generic [ref=e547]: 计划 1 片/次 · 提醒 21:00
+              - generic [ref=e548]:
+                - generic [ref=e549]: 待打卡
+                - button "查看当次" [ref=e550] [cursor=pointer]
+                - button "提醒 TA（模拟）" [ref=e552] [cursor=pointer]
+      - button "查看全部用药／打卡记录" [ref=e556] [cursor=pointer]
+      - generic [ref=e557]:
+        - heading "本月打卡日历" [level=2] [ref=e559]
+        - generic [ref=e560]:
+          - generic [ref=e561]:
+            - text: 2026 年 9 月
+            - generic [ref=e562]: 今天 13 日
+          - generic [ref=e563]:
+            - generic [ref=e564]: 一
+            - generic [ref=e565]: 二
+            - generic [ref=e566]: 三
+            - generic [ref=e567]: 四
+            - generic [ref=e568]: 五
+            - generic [ref=e569]: 六
+            - generic [ref=e570]: 日
+            - button "2026-09-01" [ref=e572] [cursor=pointer]:
+              - generic [ref=e573]: "1"
+            - button "2026-09-02" [ref=e574] [cursor=pointer]:
+              - generic [ref=e575]: "2"
+            - button "2026-09-03" [ref=e576] [cursor=pointer]:
+              - generic [ref=e577]: "3"
+            - button "2026-09-04" [ref=e578] [cursor=pointer]:
+              - generic [ref=e579]: "4"
+            - button "2026-09-05" [ref=e580] [cursor=pointer]:
+              - generic [ref=e581]: "5"
+            - button "2026-09-06" [ref=e582] [cursor=pointer]:
+              - generic [ref=e583]: "6"
+            - button "2026-09-07" [ref=e584] [cursor=pointer]:
+              - generic [ref=e585]: "7"
+            - button "2026-09-08" [ref=e586] [cursor=pointer]:
+              - generic [ref=e587]: "8"
+            - button "2026-09-09" [ref=e588] [cursor=pointer]:
+              - generic [ref=e589]: "9"
+            - button "2026-09-10，记录完成" [ref=e590] [cursor=pointer]:
+              - generic [ref=e593]: "10"
+            - button "2026-09-11" [ref=e594] [cursor=pointer]:
+              - generic [ref=e595]: "11"
+            - button "2026-09-12" [ref=e596] [cursor=pointer]:
+              - generic [ref=e597]: "12"
+            - button "2026-09-13" [ref=e598] [cursor=pointer]:
+              - generic [ref=e599]: "13"
+            - button "2026-09-14" [disabled] [ref=e600]:
+              - generic [ref=e601]: "14"
+            - button "2026-09-15" [disabled] [ref=e602]:
+              - generic [ref=e603]: "15"
+            - button "2026-09-16" [disabled] [ref=e604]:
+              - generic [ref=e605]: "16"
+            - button "2026-09-17" [disabled] [ref=e606]:
+              - generic [ref=e607]: "17"
+            - button "2026-09-18" [disabled] [ref=e608]:
+              - generic [ref=e609]: "18"
+            - button "2026-09-19" [disabled] [ref=e610]:
+              - generic [ref=e611]: "19"
+            - button "2026-09-20" [disabled] [ref=e612]:
+              - generic [ref=e613]: "20"
+            - button "2026-09-21" [disabled] [ref=e614]:
+              - generic [ref=e615]: "21"
+            - button "2026-09-22" [disabled] [ref=e616]:
+              - generic [ref=e617]: "22"
+            - button "2026-09-23" [disabled] [ref=e618]:
+              - generic [ref=e619]: "23"
+            - button "2026-09-24" [disabled] [ref=e620]:
+              - generic [ref=e621]: "24"
+            - button "2026-09-25" [disabled] [ref=e622]:
+              - generic [ref=e623]: "25"
+            - button "2026-09-26" [disabled] [ref=e624]:
+              - generic [ref=e625]: "26"
+            - button "2026-09-27" [disabled] [ref=e626]:
+              - generic [ref=e627]: "27"
+            - button "2026-09-28" [disabled] [ref=e628]:
+              - generic [ref=e629]: "28"
+            - button "2026-09-29" [disabled] [ref=e630]:
+              - generic [ref=e631]: "29"
+            - button "2026-09-30" [disabled] [ref=e632]:
+              - generic [ref=e633]: "30"
+          - paragraph [ref=e634]: 当天有任务，且每项均记录为已服用或本次无需服用时显示星星。
+      - generic [ref=e635]:
+        - generic [ref=e636]:
+          - heading "身体数据" [level=2] [ref=e637]
+          - button "添加身体数据" [ref=e638] [cursor=pointer]
+        - generic [ref=e639]:
+          - article [ref=e640]:
+            - generic [ref=e641]:
+              - heading "血压" [level=3] [ref=e642]
+              - button "查看详情" [ref=e643] [cursor=pointer]
+            - strong [ref=e644]: 130/80 mmHg
+            - paragraph [ref=e645]: 最近一次 · 2026-09-12 08:07 · 模拟设备导入
+          - article [ref=e646]:
+            - generic [ref=e647]:
+              - heading "血脂" [level=3] [ref=e648]
+              - button "查看详情" [ref=e649] [cursor=pointer]
+            - strong [ref=e650]: 总胆固醇 TC 4.2 mmol/L · 甘油三酯 TG 1.1 mmol/L · 高密度脂蛋白 HDL-C 1.3 mmol/L · 低密度脂蛋白 LDL-C 2.1 mmol/L
+            - paragraph [ref=e651]: 最近一次 · 2026-09-01 09:30 · 手动录入
+          - article [ref=e652]:
+            - generic [ref=e653]:
+              - heading "身体指标" [level=3] [ref=e654]
+              - button "查看详情" [ref=e655] [cursor=pointer]
+            - strong [ref=e656]: 身高 158 cm · 体重 56.2 kg · 体脂率 31.4 %
+            - paragraph [ref=e657]: 最近一次 · 2026-09-08 07:30 · 模拟设备导入
+            - paragraph [ref=e658]:
+              - text: BMI · 自动计算
+              - strong [ref=e659]: "22.5"
+              - text: kg/m²
+            - paragraph [ref=e660]: 身高来源：2026-09-08 07:30 · 158 cm
+      - complementary [ref=e661]:
+        - generic [ref=e664]: 仅含演示数据，不提供医疗建议，不应用于真实用药决策。
+    - contentinfo [ref=e665]: 药安心 · 家庭协同
+  - button "AI 助手，点击文字或长按模拟语音" [ref=e666] [cursor=pointer]
+  - navigation "主导航" [ref=e669]:
+    - button "首页看板" [ref=e670] [cursor=pointer]
+    - button "用药信息" [ref=e675] [cursor=pointer]
+    - button "身体数据" [ref=e680] [cursor=pointer]
+    - button "我的" [ref=e685] [cursor=pointer]
+  - dialog [active] [ref=e1127]:
+    - generic [ref=e1128]:
+      - heading "添加药品打卡计划" [level=2] [ref=e1129]
+      - button "关闭弹窗" [ref=e1130] [cursor=pointer]
+    - paragraph [ref=e1133]:
+      - text: 小李 · 记录对象：
+      - strong [ref=e1134]: 张阿姨
+      - text: · 2026-09-13
+      - button "切换长辈" [ref=e1135] [cursor=pointer]
+    - generic [ref=e1136]:
+      - paragraph [ref=e1137]: 有限文字规则与示例语音模拟，不接麦克风或模型，不提供医疗建议。
+      - log "对话消息" [ref=e1138]:
+        - article [ref=e1139]:
+          - text: 药安心助手
+          - paragraph [ref=e1140]: 我来帮您整理用药计划。请先告诉我药品名称、每次用量和单位；也可以一起说时段和提醒时间，或直接点配置卡。
+        - article [ref=e1141]:
+          - text: 您 · 文字输入
+          - paragraph [ref=e1142]: 药名是复核示例药，每次1片，不是2片，早餐，长期服用
+        - article [ref=e1143]:
+          - text: 药安心助手
+          - paragraph [ref=e1144]: 已记下：药名 复核示例药，每次 2 片。信息已整理，可在下方配置卡修改；开始日期和长期周期是表单默认值，请核对。餐时与备注可以不设。 尚未创建计划。
+      - status [ref=e1145]: 正在询问
+      - generic [ref=e1146]:
+        - button "今天吃什么药" [ref=e1147] [cursor=pointer]
+        - button "添加药品" [ref=e1148] [cursor=pointer]
+        - button "添加身体数据" [ref=e1149] [cursor=pointer]
+        - button "提醒 TA" [ref=e1150] [cursor=pointer]
+        - button "查看用药信息" [ref=e1151] [cursor=pointer]
+      - generic [ref=e1152]:
+        - heading "当前计划草稿 · 未保存" [level=3] [ref=e1153]
+        - generic [ref=e1154]:
+          - generic [ref=e1155]:
+            - generic [ref=e1156]: 药品名称 *
+            - textbox "药品名称" [ref=e1157]: 复核示例药
+          - generic [ref=e1158]:
+            - generic [ref=e1159]: 单次用量（请输入数字） *
+            - spinbutton "单次用量（请输入数字）" [ref=e1160]: "2"
+          - generic [ref=e1161]:
+            - generic [ref=e1162]: 用量单位 *
+            - combobox "用量单位" [ref=e1163]: 片
+          - group "服用时段" [ref=e1164]:
+            - generic [ref=e1165]: 服用时段 *
+            - generic [ref=e1166]:
+              - generic [ref=e1167]:
+                - generic [ref=e1168]: 选择
+                - generic [ref=e1169]: 时段
+                - generic [ref=e1170]: 提醒推送
+                - generic [ref=e1171]: 餐时（选填）
+              - generic [ref=e1172]:
+                - checkbox "选择早餐" [checked] [ref=e1174]
+                - generic [ref=e1175]:
+                  - text: 早餐
+                  - generic [ref=e1176]: 05:00–11:00
+                - generic [ref=e1177]:
+                  - button "早餐提醒小时" [ref=e1178] [cursor=pointer]:
+                    - text: "08"
+                    - generic [ref=e1179]: 时
+                  - button "早餐提醒分钟" [ref=e1180] [cursor=pointer]:
+                    - text: "00"
+                    - generic [ref=e1181]: 分
+                  - generic [aria-hidden] [ref=e1182]: "*"
+                - group "早餐餐时" [ref=e1183]:
+                  - button "餐前" [ref=e1184] [cursor=pointer]
+                  - button "餐后" [ref=e1185] [cursor=pointer]
+              - generic [ref=e1186]:
+                - checkbox "选择午餐" [ref=e1188]
+                - generic [ref=e1189]:
+                  - text: 午餐
+                  - generic [ref=e1190]: 11:00–16:00
+                - generic [ref=e1191]:
+                  - button "午餐提醒小时" [ref=e1192] [cursor=pointer]:
+                    - text: "12"
+                    - generic [ref=e1193]: 时
+                  - button "午餐提醒分钟" [ref=e1194] [cursor=pointer]:
+                    - text: "30"
+                    - generic [ref=e1195]: 分
+                - group "午餐餐时" [ref=e1196]:
+                  - button "餐前" [disabled] [ref=e1197]
+                  - button "餐后" [disabled] [ref=e1198]
+              - generic [ref=e1199]:
+                - checkbox "选择晚餐" [ref=e1201]
+                - generic [ref=e1202]:
+                  - text: 晚餐
+                  - generic [ref=e1203]: 16:00–20:00
+                - generic [ref=e1204]:
+                  - button "晚餐提醒小时" [ref=e1205] [cursor=pointer]:
+                    - text: "18"
+                    - generic [ref=e1206]: 时
+                  - button "晚餐提醒分钟" [ref=e1207] [cursor=pointer]:
+                    - text: "30"
+                    - generic [ref=e1208]: 分
+                - group "晚餐餐时" [ref=e1209]:
+                  - button "餐前" [disabled] [ref=e1210]
+                  - button "餐后" [disabled] [ref=e1211]
+              - generic [ref=e1212]:
+                - checkbox "选择睡前" [ref=e1214]
+                - generic [ref=e1215]:
+                  - text: 睡前
+                  - generic [ref=e1216]: 20:00–24:00
+                - generic [ref=e1217]:
+                  - button "睡前提醒小时" [ref=e1218] [cursor=pointer]:
+                    - text: "21"
+                    - generic [ref=e1219]: 时
+                  - button "睡前提醒分钟" [ref=e1220] [cursor=pointer]:
+                    - text: "00"
+                    - generic [ref=e1221]: 分
+                - group "睡前餐时" [ref=e1222]:
+                  - button "餐前" [disabled] [ref=e1223]
+                  - button "餐后" [disabled] [ref=e1224]
+            - paragraph [ref=e1225]: 每天 1 次，各时段单次用量相同
+          - generic [ref=e1226]:
+            - generic [ref=e1227]: 开始日期 *
+            - textbox "开始日期" [ref=e1228]: 2026-09-13
+          - generic [ref=e1229]:
+            - generic [ref=e1230]: 服用周期 *
+            - combobox "服用周期" [ref=e1231]:
+              - option "长期服用" [selected]
+              - option "截至某日期"
+          - generic [ref=e1232]:
+            - generic [ref=e1233]: 服用备注（选填）
+            - textbox "服用备注（选填）" [ref=e1234]
+          - generic [ref=e1235]:
+            - checkbox "本次由家属协助录入" [checked] [ref=e1236]
+            - generic [ref=e1237]: 本次由家属协助录入
+          - button "核对用药计划" [ref=e1238] [cursor=pointer]
+        - button "改为手动输入" [ref=e1239] [cursor=pointer]
+        - group [ref=e1240]:
+          - generic "字段来源与默认值" [ref=e1241]
+    - generic [ref=e1242]:
+      - generic [ref=e1243]:
+        - button "文字" [ref=e1244] [cursor=pointer]
+        - button "按住说话（模拟）" [pressed] [ref=e1245] [cursor=pointer]
+      - text: 选择示例语音内容
+      - combobox "选择示例语音内容" [ref=e1246]:
+        - option "请选择，不会自动发送" [selected]
+        - option "完整计划：药名是示例药，每次1片，每天2次，早餐和晚餐，长期服用"
+        - option "补齐与改口：那个，示例药，每次一片，早晚吃"
+        - option "缺少用量：药名是另一示例药"
+        - option "改为半片：不是一片，是半片"
+        - option "修改餐时：早餐饭前改饭后"
+        - option "本人声明：这次已经吃过了"
+        - option "明确否定：还没吃"
+        - option "需要澄清：没有按时服用"
+        - option "记录血压：高压125，低压75，脉搏72，今天08:30测量"
+        - option "记录血脂：总胆固醇4.8 mmol/L，甘油三酯1.2 mmol/L，今天08:30测量"
+        - option "身体指标：身高160厘米，体重60公斤，今天08:30测量"
+        - option "不支持的方案：药名是示例药，早一片晚两片"
+      - button "按住体验语音输入（模拟）" [ref=e1247] [cursor=pointer]
+      - button "点按体验（等效操作）" [ref=e1248] [cursor=pointer]
+      - generic [ref=e1249]:
+        - generic [ref=e1250]: 输入消息
+        - textbox "输入消息" [ref=e1251]:
+          - /placeholder: 输入文字，或编辑示例内容
+        - generic [ref=e1252]:
+          - button "重新输入" [ref=e1253] [cursor=pointer]
+          - button "发送" [ref=e1254] [cursor=pointer]
+  - status
