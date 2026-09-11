@@ -5,6 +5,7 @@ const R = require('../rules.js');
 const sandbox = { window: {} };
 vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../seed-data.js'), 'utf8'), sandbox);
 const raw = sandbox.window.SILVER_SEED_DATA;
+const fixtureV1 = JSON.parse(fs.readFileSync(require('node:path').join(__dirname, 'fixtures/mvp-v3-v1-minimal.json'), 'utf8'));
 const fresh = () => R.prepareSeed(raw);
 const elder = 'elder-zhang', child = 'child-li', pid = 'profile-zhang';
 const at = (d, t, offset = 0) => R.setClock(d, offset, t);
@@ -56,8 +57,8 @@ test('future start and inclusive end date; no duplicate tasks', () => {
   assert.equal(d.doseEvents.filter(e=>e.planId===p.id).length,0); at(d,'08:00',1); at(d,'08:00',1); assert.equal(d.doseEvents.filter(e=>e.planId===p.id).length,3); at(d,'08:00',2); assert.equal(d.doseEvents.filter(e=>e.planId===p.id).length,3);
 });
 test('legacy migration keeps enum source, no inferred meal or actual time', () => {
-  const d=R.migrate(raw); const e=d.doseEvents[0]; assert.equal(e.status,'taken'); assert.equal(e.legacy.status,'taken_on_time'); assert.equal(e.snapshot.meal,''); assert.equal(e.actual,null); assert(R.validData(d));
-  const x=JSON.parse(JSON.stringify(raw)); x.doseEvents[0].recordedAt=null; const y=R.migrate(x); at(y,'00:00',1); assert.equal(R.dailyResult(y,pid,R.DAY).basis.find(b=>b.eventId===e.id).status,'pending');
+  const x=R.clone(fixtureV1);x.doseEvents[0].status='taken_on_time';x.doseEvents[0].recordedAt='08:10';x.doseEvents[0].recordedBy='fixture-elder';const d=R.migrate(x),e=d.doseEvents[0];assert.equal(e.status,'taken');assert.equal(e.legacy.status,'taken_on_time');assert.equal(e.snapshot.meal,'');assert.equal(e.actual,null);assert(R.validData(d));
+  const y=R.migrate(fixtureV1);at(y,'00:00',1);assert.equal(R.dailyResult(y,'fixture-profile',R.DAY).basis.find(b=>b.eventId===e.id).status,'pending');
 });
 test('invalid archive/duplicates/references/snooze/settings rejected', () => {
   const d=fresh(); d.doseEvents.push(R.clone(d.doseEvents[0])); assert(!R.validData(d));

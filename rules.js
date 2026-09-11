@@ -6,7 +6,9 @@
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
   const DAY = '2026-09-13';
-  const SLOTS = { 早餐: '08:00', 午餐: '12:30', 晚餐: '18:30', 睡前: '21:00' };
+  const SLOTS = { 早餐: '08:00', 午餐: '12:30', 晚餐: '17:30', 睡前: '21:00' };
+  const LEGACY_SLOTS = { ...SLOTS, 晚餐: '18:30' };
+  const MISSED_ALERTS = { 早餐: '09:00', 午餐: '14:00', 晚餐: '19:00', 睡前: '22:00' };
   const RANGES = { 早餐: [300, 660], 午餐: [660, 960], 晚餐: [960, 1200], 睡前: [1200, 1440] };
   const STATUS = { pending: '待打卡', overdue: '未按时打卡', snoozed: '延后中', taken: '已服用', not_taken: '未服用', skipped: '本次无需服用', cancelled: '已取消' };
   const FACTS = ['taken', 'not_taken', 'skipped'];
@@ -31,6 +33,14 @@
   };
   const canDeclare = (data, accountId, e) => own(data, accountId, e) && canAccess(data, accountId, e.profileId) && !e.cancelledAt && now(data) >= e.startAt && now(data) >= e.createdAt;
   const protectedAt = (e, at) => !resolved(e) && !!e.snoozeUntil && !!e.snoozedAt && e.snoozedAt <= at && at < e.snoozeUntil;
+  const reminderTime = setting => setting?.reminderTime ?? setting?.time;
+  const safeMissedAlert = (slot, reminder, preferred = MISSED_ALERTS[slot]) => validTime(reminder) && validTime(preferred) && minute(preferred) > minute(reminder) && minute(preferred) < RANGES[slot][1] ? preferred : null;
+  const slotSetting = (slot, setting = {}, { migrated = false } = {}) => {
+    const reminder = reminderTime(setting) || (migrated ? LEGACY_SLOTS[slot] : SLOTS[slot]);
+    const missed = Object.hasOwn(setting, 'missedAlertTime') ? setting.missedAlertTime : safeMissedAlert(slot, reminder);
+    return { ...setting, time: reminder, reminderTime: reminder, missedAlertTime: missed, meal: setting.meal || '' };
+  };
+  const normalizedSlotSettings = (settings = {}, options) => Object.fromEntries(Object.keys(SLOTS).map(slot => [slot, slotSetting(slot, settings[slot], options)]));
   function stateOf(e, data) {
     if (e.cancelledAt) return 'cancelled';
     if (resolved(e)) return e.status;
@@ -59,10 +69,10 @@
     return { startAt: stamp(date, hhmm(RANGES[slot][0])), deadlineAt: RANGES[slot][1] === 1440 ? stamp(addDays(date, 1), '00:00') : stamp(date, hhmm(RANGES[slot][1])), reminderAt: stamp(date, time) };
   }
   function makeEvent(p, date, slot, at) {
-    const setting = p.slotSettings[slot];
-    return { id: id('event'), planId: p.id, profileId: p.profileId, date, slot, scheduledTime: setting.time,
-      ...taskTimes(date, slot, setting.time), createdAt: at, started: at >= taskTimes(date, slot, setting.time).startAt, planVersion: p.version, cancelledAt: null,
-      snapshot: { name: p.name, doseValue: p.doseValue, doseUnit: p.doseUnit, meal: setting.meal, note: p.note || '', color: p.color || 'blue' },
+    const setting = slotSetting(slot, p.slotSettings[slot]),reminder=setting.reminderTime,missed=setting.missedAlertTime;
+    return { id: id('event'), planId: p.id, profileId: p.profileId, date, slot, scheduledTime: reminder, reminderTime: reminder, missedAlertTime: missed, missedAlertAt: missed ? stamp(date, missed) : null,
+      ...taskTimes(date, slot, reminder), createdAt: at, started: at >= taskTimes(date, slot, reminder).startAt, planVersion: p.version, cancelledAt: null,
+      snapshot: { name: p.name, doseValue: p.doseValue, doseUnit: p.doseUnit, meal: setting.meal, reminderTime: reminder, missedAlertTime: missed, note: p.note || '', color: p.color || 'blue' },
       status: 'pending', recordedAt: null, recordedBy: null, actual: null, changes: [], snoozeUsed: 0, snoozedAt: null, snoozeUntil: null, n3LastAt: null };
   }
   function generateEvents(data, p, date = day(data), at = now(data)) {
@@ -94,7 +104,9 @@
     if (!Array.isArray(d.slots) || !d.slots.length || new Set(d.slots).size !== d.slots.length || d.slots.some(s => !SLOTS[s])) errors.slots = '至少选择一个有效服用时段';
     (d.slots || []).forEach(s => {
       const t = d.slotSettings?.[s];
-      if (!RANGES[s] || !validTime(t?.time) || minute(t.time) < RANGES[s][0] || minute(t.time) >= RANGES[s][1]) errors[`time-${s}`] = `提醒需在${s}自然时段内`;
+      const reminder=reminderTime(t),missed=Object.hasOwn(t||{},'missedAlertTime')?t.missedAlertTime:MISSED_ALERTS[s];
+      if (!RANGES[s] || !validTime(reminder) || minute(reminder) < RANGES[s][0] || minute(reminder) >= RANGES[s][1] || (t?.time&&t?.reminderTime&&t.time!==t.reminderTime)) errors[`time-${s}`] = `提醒需在${s}自然时段内`;
+      if (missed!==null&&(!validTime(missed)||minute(missed)<=minute(reminder)||minute(missed)>=RANGES[s][1])) errors[`time-${s}`] = `${s}用药提醒必须早于固定 N2 提前预警 ${MISSED_ALERTS[s]}`;
       if (t && !['', '餐前', '餐后'].includes(t.meal)) errors[`meal-${s}`] = '餐时只能选择餐前、餐后或留空';
     });
     if (!validDate(d.startDate)) errors.startDate = '请选择有效开始日期';
@@ -104,13 +116,16 @@
   }
   function savePlan(data, accountId, draft, pid, planId) {
     if (!canAccess(data, accountId, pid)) throw Error('无权为此长辈保存计划');
-    const errors = planErrors(draft);
-    if (Object.keys(errors).length) throw Error(Object.values(errors).join('；'));
     const previous = planId ? data.medicationPlans.find(p => p.id === planId && p.profileId === pid && p.status === 'active') : null;
     if (planId && !previous) throw Error('原计划已变化，请重新打开核对');
     if (previous && draft.version && draft.version !== previous.version) throw Error('计划已更新，请重新核对');
     if (previous && now(data) < previous.effectiveAt) throw Error('演示时间早于计划修改时间，请向前调整');
-    const p = { id: planId || id('med'), profileId: pid, name: draft.name.trim(), doseValue: Number(draft.doseValue), doseUnit: draft.doseUnit.trim(), slots: [...draft.slots], slotSettings: clone(draft.slotSettings), startDate: draft.startDate, duration: draft.duration, endDate: draft.duration === '截至某日期' ? draft.endDate : null, note: draft.note || '', source: draft.source || '手动录入', assisted: !!draft.assisted, createdBy: previous?.createdBy || accountId, createdAt: previous?.createdAt || now(data), effectiveAt: now(data), version: (previous?.version || 0) + 1, status: 'active', color: previous?.color || 'blue', revisions: previous ? [...(previous.revisions || []), clone({ ...previous, revisions: [] })] : [] };
+    const settings=normalizedSlotSettings(draft.slotSettings);
+    for(const slot of draft.slots||[])if(settings[slot].missedAlertTime===null&&previous?.slotSettings?.[slot]?.missedAlertTime!==null)settings[slot].missedAlertTime=MISSED_ALERTS[slot];
+    const candidate={...draft,slotSettings:settings},errors=planErrors(candidate);
+    if(Object.keys(errors).length)throw Error(Object.values(errors).join('；'));
+    if(!previous&&candidate.slots.some(slot=>candidate.slotSettings[slot].missedAlertTime===null))throw Error('新计划必须有晚于用药提醒的 N2 提前预警');
+    const p = { id: planId || id('med'), profileId: pid, name: draft.name.trim(), doseValue: Number(draft.doseValue), doseUnit: draft.doseUnit.trim(), slots: [...draft.slots], slotSettings: settings, startDate: draft.startDate, duration: draft.duration, endDate: draft.duration === '截至某日期' ? draft.endDate : null, note: draft.note || '', source: draft.source || '手动录入', assisted: !!draft.assisted, createdBy: previous?.createdBy || accountId, createdAt: previous?.createdAt || now(data), effectiveAt: now(data), version: (previous?.version || 0) + 1, status: 'active', color: previous?.color || 'blue', revisions: previous ? [...(previous.revisions || []), clone({ ...previous, revisions: [] })] : [] };
     if (previous) {
       data.medicationPlans[data.medicationPlans.indexOf(previous)] = p;
       data.doseEvents.filter(e => e.planId === p.id && e.startAt > now(data) && !e.started && !e.changes.length && !e.snoozeUsed).forEach(e => {
@@ -213,7 +228,8 @@
     const title=kind==='N1'?'该吃药啦！':kind==='N2'?`${p.name}有用药记录待核对`:`${a.name}提醒您核对`;
     const text=`${e.date} ${e.slot} · ${e.snapshot.name} · 计划 ${e.snapshot.doseValue} ${e.snapshot.doseUnit} · ${e.scheduledTime} 提醒，${pending?'模拟远端暂未收到记录':'目前尚未记录'}。请按实际情况记录。`;
     const deliveryState=d.simulationMode==='failure'?'failed':d.simulationMode==='offline'&&kind==='N3'?'pending':'delivered';
-    const n={id:id('notice'),kind,eventId:e.id,profileId:e.profileId,date:e.date,recipientId,fromAccountId,operationId,round,title,text,shortText:'您有一条用药记录提醒',createdAt:now(d),deliveryState,deliveryAttempts:1,deliveredAt:deliveryState==='delivered'?now(d):null,simulated:true};
+    const noticeId=id('notice'),createdAt=now(d);
+    const n={id:noticeId,kind,eventId:e.id,profileId:e.profileId,date:e.date,recipientId,fromAccountId,operationId,round,title,text,shortText:'您有一条用药记录提醒',createdAt,deliveryState,deliveryAttempts:1,deliveredAt:deliveryState==='delivered'?createdAt:null,simulated:true,...(kind==='N2'?{warningRound:'deadline',receiverId:recipientId,notificationId:noticeId,sentAt:createdAt}:{})};
     d.notificationLogs.push(n);return n;
   }
   function evaluateNotifications(d) {
@@ -257,12 +273,39 @@
     return d.doseEvents.filter(e=>own(d,accountId,e)&&canAccess(d,accountId,e.profileId)&&notificationEligible(d,'N1',e))
       .sort((a,b)=>a.reminderAt.localeCompare(b.reminderAt)||a.id.localeCompare(b.id));
   }
+  function migrateTaskToV3(e,p,d) {
+    const reminder=validTime(e.reminderTime)?e.reminderTime:e.scheduledTime;
+    if(!validTime(reminder))throw Error('invalid');
+    const historical=resolved(e)||!!e.cancelledAt;
+    const missed=historical?null:p.slotSettings[e.slot].missedAlertTime===null?null:safeMissedAlert(e.slot,reminder);
+    e.scheduledTime=reminder;e.reminderTime=reminder;e.reminderAt ||= stamp(e.date,reminder);
+    e.missedAlertTime=missed;e.missedAlertAt=missed?stamp(e.date,missed):null;
+    e.snapshot={...e.snapshot,reminderTime:reminder,missedAlertTime:missed};
+    e.started ||= e.startAt<=now(d)||!!e.changes.length||!!e.snoozeUsed;
+  }
+  function migrateNotificationsToV3(d) {
+    const keys=new Set();
+    d.notificationLogs.forEach(n=>{
+      if(n.kind!=='N2')return;
+      const original=clone(n),e=d.doseEvents.find(e=>e.id===n.eventId),reliable=e&&e.profileId===n.profileId&&e.date===n.date&&d.accounts.some(a=>a.id===n.recipientId);
+      const key=reliable?`${n.eventId}|${n.recipientId}|deadline`:'';
+      if(!reliable||keys.has(key)){n.legacy=true;n.legacyRecord=original;delete n.warningRound;delete n.receiverId;delete n.notificationId;return;}
+      keys.add(key);n.warningRound='deadline';n.receiverId=n.recipientId;n.notificationId=n.id;n.sentAt=validStamp(n.sentAt)?n.sentAt:validStamp(n.deliveredAt)?n.deliveredAt:n.createdAt;
+    });
+  }
+  function migrateV2ToV3(raw) {
+    const d=clone(raw);d.version=3;
+    d.medicationPlans.forEach(p=>{p.slotSettings=normalizedSlotSettings(p.slotSettings,{migrated:true});});
+    d.doseEvents.forEach(e=>{const p=d.medicationPlans.find(p=>p.id===e.planId&&p.profileId===e.profileId);if(!p||!SLOTS[e.slot])throw Error('invalid');migrateTaskToV3(e,p,d);});
+    migrateNotificationsToV3(d);return notificationDefaults(d);
+  }
   function migrate(raw) {
-    if (raw?.version === 2) {
+    if (raw?.version === 3) {
       const d = clone(raw);
       d.doseEvents.forEach(e => { e.started ||= e.startAt <= now(d) || !!e.changes.length || !!e.snoozeUsed; });
       return notificationDefaults(d);
     }
+    if(raw?.version===2)return migrateV2ToV3(raw);
     if (!raw || (raw.version != null && raw.version !== 1)) throw Error('invalid');
     const d = clone(raw);
     if (!['accounts', 'elderProfiles', 'medicationPlans', 'doseEvents', 'healthRecords', 'notificationLogs'].every(k => Array.isArray(d[k]))) throw Error('invalid');
@@ -274,7 +317,7 @@
     d.medicationPlans.forEach(p => {
       if (!Array.isArray(p.slots) || p.slots.some(s => !SLOTS[slotName(s)])) throw Error('invalid');
       p.legacy = { slots: [...p.slots], source: p.source }; p.slots = p.slots.map(slotName);
-      p.slotSettings = Object.fromEntries(Object.entries(SLOTS).map(([s, time]) => [s, { time, meal: '' }]));
+      p.slotSettings = Object.fromEntries(Object.entries(LEGACY_SLOTS).map(([s, time]) => [s, { time, meal: '' }]));
       p.version = 1; p.effectiveAt = stamp(p.startDate, '00:00'); p.createdAt = p.effectiveAt;
       p.endDate ||= null; p.revisions = [];
     });
@@ -282,7 +325,9 @@
       const p = d.medicationPlans.find(p => p.id === old.planId && p.profileId === old.profileId);
       const slot = slotName(old.slot);
       if (!p || !SLOTS[slot] || !validDate(old.date) || !['pending', 'overdue', 'taken_on_time', 'taken_late', 'skipped', 'not_taken'].includes(old.status)) throw Error('invalid');
-      const e = makeEvent(p, old.date, slot, stamp(old.date, '00:00'));
+      const eventPlan=clone(p),sourceReminder=validTime(old.scheduledTime)?old.scheduledTime:eventPlan.slotSettings[slot].time;eventPlan.slotSettings[slot].time=sourceReminder;
+      const e = makeEvent(eventPlan, old.date, slot, stamp(old.date, '00:00'));
+      delete e.reminderTime;delete e.missedAlertTime;delete e.missedAlertAt;delete e.snapshot.reminderTime;delete e.snapshot.missedAlertTime;
       const sourceTime = validTime(old.recordedAt) ? stamp(old.date, old.recordedAt) : validStamp(old.recordedAt) ? old.recordedAt : null;
       e.id = old.id; e.status = old.status.startsWith('taken_') ? 'taken' : old.status === 'overdue' ? 'pending' : old.status;
       e.recordedAt = sourceTime; e.recordedBy = old.recordedBy || null; e.recordedByName = old.recordedByName || null;
@@ -296,7 +341,7 @@
     for (const key of ['isPro', 'proEnabled', 'subscriptionStatus', 'piggyBank', 'rewardBalance', 'transactions', 'mascot', 'mascotUpdatedAt']) {
       delete d[key]; d.accounts.forEach(a => { delete a[key]; }); d.elderProfiles.forEach(p => { delete p[key]; });
     }
-    return notificationDefaults(d);
+    return migrateV2ToV3(notificationDefaults(d));
   }
   function prepareSeed(raw) {
     const d = migrate(raw);
@@ -309,34 +354,39 @@
       const e = makeEvent(p, date, '早餐', stamp(date, '00:00'));
       e.id = `history-${n}`; e.status = n === 10 ? 'taken' : 'not_taken'; e.recordedAt = stamp(date, '08:10'); e.recordedBy = 'elder-zhang';
       e.changes = [{ id: `seed-history-${n}`, kind: '演示预设', before: { status: 'pending' }, status: e.status, recordedAt: e.recordedAt, recordedBy: e.recordedBy, reliableTime: true, syncState: 'local' }];
-      d.doseEvents.push(e);
+      if(!d.doseEvents.some(existing=>existing.id===e.id))d.doseEvents.push(e);
     });
     return d;
   }
   function validData(d) {
     try {
-      if (!d || d.version !== 2 || !validTime(d.demoTime) || !Number.isInteger(d.dateOffset) || d.dateOffset < 0 || d.dateOffset > 31 || !['ios', 'harmonyos', 'android'].includes(d.notificationStyle)) return false;
+      if (!d || d.version !== 3 || !validTime(d.demoTime) || !Number.isInteger(d.dateOffset) || d.dateOffset < 0 || d.dateOffset > 31 || !['ios', 'harmonyos', 'android'].includes(d.notificationStyle)) return false;
       const keys = ['accounts', 'families', 'elderProfiles', 'medicationPlans', 'doseEvents', 'healthRecords', 'notificationLogs'];
       if (!keys.every(k => Array.isArray(d[k]) && d[k].every(x => x && typeof x.id === 'string') && new Set(d[k].map(x => x.id)).size === d[k].length) || !d.accounts.length) return false;
       if (!d.accounts.every(a => ['elder', 'child'].includes(a.role) && ['normal', 'elder'].includes(a.fontMode) && d.families.some(f => f.id === a.familyId) && (a.role === 'elder' ? d.elderProfiles.some(p => p.id === a.profileId && p.familyId === a.familyId) : Array.isArray(a.boundProfileIds) && a.boundProfileIds.every(pid => d.elderProfiles.some(p => p.id === pid && p.familyId === a.familyId))))) return false;
       if (!d.elderProfiles.every(p => d.families.some(f => f.id === p.familyId))) return false;
-      if (!d.medicationPlans.every(p => Object.keys(planErrors(p)).length === 0 && ['active', 'inactive'].includes(p.status) && d.elderProfiles.some(x => x.id === p.profileId) && Number.isInteger(p.version) && validStamp(p.effectiveAt))) return false;
+      if (!d.medicationPlans.every(p => Object.keys(planErrors(p)).length === 0 && ['active', 'inactive'].includes(p.status) && d.elderProfiles.some(x => x.id === p.profileId) && Number.isInteger(p.version) && validStamp(p.effectiveAt) && Object.keys(SLOTS).every(slot=>{
+        const setting=p.slotSettings?.[slot],reminder=setting?.reminderTime,missed=setting?.missedAlertTime;
+        return setting&&setting.time===reminder&&validTime(reminder)&&minute(reminder)>=RANGES[slot][0]&&minute(reminder)<RANGES[slot][1]&&(missed===null||(validTime(missed)&&minute(missed)>minute(reminder)&&minute(missed)<RANGES[slot][1]));
+      }))) return false;
       const taskKeys = d.doseEvents.map(e => `${e.profileId}|${e.planId}|${e.date}|${e.slot}`);
       if (new Set(taskKeys).size !== taskKeys.length) return false;
       if (!d.doseEvents.every(e => {
         if (!validDate(e.date) || !SLOTS[e.slot] || !['pending', ...FACTS].includes(e.status) || !d.medicationPlans.some(p => p.id === e.planId && p.profileId === e.profileId)) return false;
-        const t = taskTimes(e.date, e.slot, e.scheduledTime);
-        if (!validTime(e.scheduledTime) || minute(e.scheduledTime) < RANGES[e.slot][0] || minute(e.scheduledTime) >= RANGES[e.slot][1] || Object.keys(t).some(k => e[k] !== t[k]) || !validStamp(e.createdAt)) return false;
-        if (!e.snapshot?.name || !(e.snapshot.doseValue > 0) || !Number.isFinite(e.snapshot.doseValue) || !e.snapshot.doseUnit || !['', '餐前', '餐后'].includes(e.snapshot.meal)) return false;
+        const t = taskTimes(e.date, e.slot, e.scheduledTime),missed=e.missedAlertTime;
+        if (!validTime(e.scheduledTime) || e.reminderTime!==e.scheduledTime || minute(e.scheduledTime) < RANGES[e.slot][0] || minute(e.scheduledTime) >= RANGES[e.slot][1] || Object.keys(t).some(k => e[k] !== t[k]) || !validStamp(e.createdAt)) return false;
+        if(missed!==null&&(!validTime(missed)||minute(missed)<=minute(e.reminderTime)||minute(missed)>=RANGES[e.slot][1]||e.missedAlertAt!==stamp(e.date,missed))||missed===null&&e.missedAlertAt!==null)return false;
+        if (!e.snapshot?.name || !(e.snapshot.doseValue > 0) || !Number.isFinite(e.snapshot.doseValue) || !e.snapshot.doseUnit || !['', '餐前', '餐后'].includes(e.snapshot.meal) || e.snapshot.reminderTime!==e.reminderTime || e.snapshot.missedAlertTime!==missed) return false;
         if (![0, 1].includes(e.snoozeUsed) || [e.cancelledAt, e.recordedAt, e.snoozeUntil, e.snoozedAt, e.n3LastAt].some(x => x != null && !validStamp(x))) return false;
         if (e.snoozeUsed && (!e.snoozeUntil || !e.snoozedAt || ![300000, 1800000].includes(Date.parse(e.snoozeUntil) - Date.parse(e.snoozedAt)))) return false;
         return Array.isArray(e.changes) && new Set(e.changes.map(c => c.id)).size === e.changes.length && e.changes.every(c => c.id && ['pending', ...FACTS].includes(c.status) && (c.recordedAt == null || validStamp(c.recordedAt)));
       })) return false;
       if (!d.healthRecords.every(r => d.elderProfiles.some(p => p.id === r.profileId) && ['blood_pressure', 'blood_lipid', 'body'].includes(r.type) && r.values && Object.values(r.values).every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0) && typeof r.measuredAt === 'string' && validDate(r.measuredAt.slice(0, 10)) && validTime(r.measuredAt.slice(11, 16)))) return false;
       if(typeof d.notificationsEnabled!=='boolean'||typeof d.privatePreview!=='boolean'||!['online','offline','failure'].includes(d.simulationMode))return false;
+      const n2Keys=d.notificationLogs.filter(n=>n.kind==='N2'&&n.legacy!==true).map(n=>`${n.eventId}|${n.receiverId}|${n.warningRound}`);if(new Set(n2Keys).size!==n2Keys.length)return false;
       return d.notificationLogs.every(n => d.doseEvents.some(e => e.id === n.eventId && e.profileId === n.profileId) && typeof n.text === 'string' &&
-        (n.legacy===true || (['N1','N2','N3'].includes(n.kind)&&d.accounts.some(a=>a.id===n.recipientId)&&validDate(n.date)&&d.doseEvents.some(e=>e.id===n.eventId&&e.date===n.date)&&typeof n.round==='string'&&typeof n.operationId==='string'&&validStamp(n.createdAt)&&['delivered','failed','pending','suppressed'].includes(n.deliveryState)&&Number.isInteger(n.deliveryAttempts)&&n.deliveryAttempts>0)));
+        (n.legacy===true || (['N1','N2','N3'].includes(n.kind)&&d.accounts.some(a=>a.id===n.recipientId)&&validDate(n.date)&&d.doseEvents.some(e=>e.id===n.eventId&&e.date===n.date)&&typeof n.round==='string'&&typeof n.operationId==='string'&&validStamp(n.createdAt)&&['delivered','failed','pending','suppressed'].includes(n.deliveryState)&&Number.isInteger(n.deliveryAttempts)&&n.deliveryAttempts>0&&(n.kind!=='N2'||(['early','deadline'].includes(n.warningRound)&&n.receiverId===n.recipientId&&n.notificationId===n.id&&validStamp(n.sentAt))))));
     } catch { return false; }
   }
-  return { DAY, SLOTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult, notificationDefaults, simulatedRemote, notificationEligible, notificationRound, evaluateNotifications, sendN3, retryNotifications, syncSimulation, focusCandidates };
+  return { DAY, SLOTS, MISSED_ALERTS, STATUS, RANGES, FACTS, clone, id, dateAt, addDays, stamp, day, now, minute, validDate, validTime, validStamp, plusMinutes, stateOf, resolved, protectedAt, canAccess, canDeclare, snoozeReason, reminderReason, generateEvents, setClock, migrate, prepareSeed, validData, planErrors, savePlan, stopPlan, recordDose, undoDose, snooze, dailyResult, notificationDefaults, simulatedRemote, notificationEligible, notificationRound, evaluateNotifications, sendN3, retryNotifications, syncSimulation, focusCandidates };
 });

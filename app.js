@@ -152,7 +152,7 @@
     closeModal(false);view.page='home';overdueOpen=false;render();if(restore&&drafts.has(sessionKey()))resumeDraft();
   }
 
-  const emptyPlan = () => ({name:'',doseValue:'',doseUnit:'',slots:[],slotSettings:Object.fromEntries(Object.entries(SLOTS).map(([slot,time])=>[slot,{time,meal:''}])),startDate:today(),duration:'长期服用',endDate:'',note:'',assisted:account().role==='child'});
+  const emptyPlan = () => ({name:'',doseValue:'',doseUnit:'',slots:[],slotSettings:Object.fromEntries(Object.entries(SLOTS).map(([slot,time])=>[slot,{time,reminderTime:time,missedAlertTime:R.MISSED_ALERTS[slot],meal:''}])),startDate:today(),duration:'长期服用',endDate:'',note:'',assisted:account().role==='child'});
   const emptyHealth = () => ({values:{},extras:[],measuredAt:`${today()}T${data.demoTime}`,note:'',assisted:account().role==='child'});
   const withSource=(...sources)=>[...new Set(sources.filter(Boolean).flatMap(s=>s.split('、')))].join('、');
   const fieldLabel=key=>({name:'药品名称',doseValue:'单次用量',doseUnit:'用量单位',slots:'服用时段',startDate:'开始日期',duration:'服用周期',endDate:'结束日期',note:'备注',assisted:'家属协助'}[key]||key.replace('time-','提醒：').replace('meal-','餐时：'));
@@ -929,7 +929,7 @@
       const time=`${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
       const [start,end]=R.RANGES[modal.picker.slot];
       if (!Number.isInteger(hour)||!Number.isInteger(minute)||!R.validTime(time)||R.minute(time)<start||R.minute(time)>=end) return formError('提醒时间必须在当前自然时段内。');
-      const slot=modal.picker.slot;modal.draft.slotSettings[slot].time=time;const c=chatSession();if(c)delete c.planIssues?.[`time-${slot}`];modal.picker=null;reconcileMedicineErrors();renderModal();return;
+      const slot=modal.picker.slot;modal.draft.slotSettings[slot].time=time;modal.draft.slotSettings[slot].reminderTime=time;const c=chatSession();if(c)delete c.planIssues?.[`time-${slot}`];modal.picker=null;reconcileMedicineErrors();renderModal();return;
     }
     if (form.dataset.form === 'clock') {
       const time = fd.get('time');

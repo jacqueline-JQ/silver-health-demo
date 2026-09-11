@@ -118,7 +118,7 @@
     else if(explicit.length){set('slots',/(?:改为|改成|时段为|仅|只在)(?:早餐|午餐|晚餐|睡前)/.test(scoped)?explicit:[...new Set([...d.slots,...explicit])]);}
     const removed=explicit.filter(slot=>new RegExp(`(?:取消|去掉|不选|不要)(?:${slot})(?:时段|这次|这一顿|服用|吃药)?(?:[，,。；;]|$)|${slot}(?:时段)?(?:取消|去掉|不选|不要吃药)(?:[，,。；;]|$)`).test(scoped));
     if(removed.length)set('slots',d.slots.filter(s=>!removed.includes(s)));
-    for(const [slot,value] of timeUpdates){d.slotSettings[slot].time=value;changed.push(`time-${slot}`);resolvedKinds.push(`time-${slot}`);}
+    for(const [slot,value] of timeUpdates){d.slotSettings[slot].time=value;d.slotSettings[slot].reminderTime=value;changed.push(`time-${slot}`);resolvedKinds.push(`time-${slot}`);}
     const meals=[...scoped.matchAll(/餐前|饭前|餐后|饭后/g)];if(meals.length){
       if(explicit.length){for(const [slot,meal] of mealUpdates){if(!slot)continue;d.slotSettings[slot].meal=meal;changed.push(`meal-${slot}`);resolvedKinds.push(`meal-${slot}`);}}
       else {const meal=mealUpdates.get(''),oldMeal=/前/.test(meals[0][0])?'餐前':'餐后';const target=/改/.test(scoped)?d.slots.filter(s=>d.slotSettings[s].meal===oldMeal):d.slots;if(!target.length)issues.push('请先选择餐时对应的时段。');else for(const slot of target){d.slotSettings[slot].meal=meal;changed.push(`meal-${slot}`);resolvedKinds.push(`meal-${slot}`);}}

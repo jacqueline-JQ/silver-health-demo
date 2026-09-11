@@ -64,6 +64,17 @@
       "status": "overdue",
       "recordedAt": null,
       "recordedBy": null
+    },
+    {
+      "id": "fixture-history",
+      "profileId": "fixture-profile",
+      "planId": "fixture-plan",
+      "slot": "早餐后",
+      "scheduledTime": "08:30",
+      "date": "2026-09-12",
+      "status": "taken_on_time",
+      "recordedAt": "08:40",
+      "recordedBy": "fixture-elder"
     }
   ],
   "healthRecords": [],
