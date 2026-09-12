@@ -1,0 +1,92 @@
+PASS 否定和含糊声明严格区分
+PASS 早晚不擅自映射，半片改口保留单位
+PASS 剂量否定改口按作用域解析
+PASS 剂量否定缺新值与冲突最终值阻止核对
+PASS 相同剂量先肯定后否定仍阻止核对
+PASS 未知表达不覆盖手动字段或餐时
+PASS 两个时段的餐时分别解析，不以末尾覆盖
+PASS 餐时否定不删除服用时段
+PASS 完整句子中重复提及的餐时归属于正确行
+PASS 疑问条件矛盾或否定记录指令不产生事实
+PASS 只接受完整支持声明，不依赖疑问词黑名单
+PASS 孤立餐时否定保持全部原字段
+PASS 餐时改口确定替换且冲突最终值阻止
+PASS 同一时段重复餐时冲突按字段阻止
+PASS 分时不同量与非每日周期阻止候选
+PASS 数字自定义单位和明确次数可校验
+PASS 当前计划修改语气与已保存计划查询分流
+PASS 当前草稿支持逐字段修改
+PASS 备注内容不串改餐时且无效提醒保留原草稿
+PASS 不同测量单位不换算为默认单位
+PASS 身体数值时间与用户转述来源保留
+PASS 查询优先且不以问题触发保存
+PASS 本人细节来自白名单片段，不从药名或计划推造
+PASS 23 conversation rule groups
+✔ tests/conversation.test.cjs (56.185042ms)
+PASS N1到点、自动聚焦和每轮去重
+PASS 截止N2分别发给长辈和授权子女且每人一次
+PASS 5分钟到期新增N1、不到时段截止不发N2
+PASS 跨时段延后保护结束发送截止轮且 canonical 轮次不重复
+PASS N3账号权限、共享冷却和操作ID去重
+PASS 模拟关通知、失败、原ID重试和有效态抑制
+PASS 23:55本机确认、跨日接收只更新元数据且星星保留
+PASS 离线延后不伪称远端抑制；同步后仍关联原日期
+PASS 通知字段损坏被拒绝；旧记录保留迁移
+✔ tests/notifications.test.cjs (55.486084ms)
+PASS 1 seed valid and deterministic history samples
+PASS 2 all four exact natural boundaries and declaration before reminder
+PASS 3 cross-slot snooze endpoints, once, refresh and undo retain allowance
+PASS 4 within-slot snooze never creates early overdue; past task can snooze
+PASS 5 three facts, no invented actual values, corrections append history
+PASS 6 strict current stars, historical first entry and corrections frozen
+PASS 7 cross-midnight protection preserves original identity and original day star
+PASS 8 create current/future only; started snapshots immutable at exact start
+PASS 9 future start and inclusive end date; no duplicate tasks
+PASS 10 legacy migration keeps enum source, no inferred meal or actual time
+PASS 11 invalid archive/duplicates/references/snooze/settings rejected
+PASS 12 shared N3 cooldown survives other family identity and undo
+PASS 13 rewinding cannot edit/cancel once-started tasks or erase declarations
+PASS 13 rule groups
+✔ tests/rules.test.cjs (56.213667ms)
+PASS V3-N01 提前轮与截止轮按完整时刻分别触发并覆盖长辈和全部子女
+PASS V3-N02 每轮实时重算授权且历史提前轮保留
+PASS V3-N03 提前轮后完成任务不再发送截止轮
+PASS V3-N04 睡前截止轮跨日但始终关联原任务日期
+PASS V3-N05 迁移产生的 null 提前时刻只关闭提前轮
+PASS V3-N06 无效 N2 时间字段不猜测轮次且不改任务事实
+PASS V3-N07 截止轮后延后到期仍复用 canonical 轮次而不新增记录
+PASS V3-N08 旧通知仅凭真实发送证据迁移且不以当前授权否定历史
+PASS V3-N09 延后保护结束覆盖提前前、提前窗内和截止后三个分支
+PASS V3-N10 离线提前轮跨过截止后终止并以原 ID 送达截止轮
+PASS V3-N11 临时保护保持排队且保护结束后复用原通知 ID
+PASS V3-N12 撤权只抑制目标接收人且其他人与新授权人继续
+PASS V3-N13 完成或取消发生在排队后会终止原通知且不新增轮次
+PASS V3-N14 失败重试保留通知 ID 并只追加送达元数据
+PASS V3-N15 旧截止轮按签名和时刻确定性选择，未知与延后轮保留 legacy
+PASS V3-N16 尚未建轮次时本机延后仍阻止恢复在线后的初次送达
+PASS V3-N17 尚未建轮次时本机已完成会把远端旧视图轮次直接终止
+PASS 17 stage-1 notification groups
+✔ tests/v3-stage01.notifications.test.cjs (55.8085ms)
+PASS V3-M01 原生种子是有效 version 3 且重复准备不增加历史
+PASS V3-M02 v1 迁移保留来源、原提醒和已完成历史
+PASS V3-M03 v2 迁移规范化计划与待处理任务，不改写历史快照
+PASS V3-M04 旧计划默认 N2 不晚于 N1 时唯一表示为 null
+PASS V3-M05 v2 缺失时段设置按旧默认补齐且不改任务自身时间
+PASS V3-M06 旧 N2 可靠记录标截止轮并保留原 ID 与发送时间
+PASS V3-M07 重复或缺少接收证据的旧 N2 保留为 legacy
+PASS V3-M08 v3 再载入幂等且不重写字段
+PASS V3-M09 新计划固定 N2 必须晚于自定义 N1
+PASS V3-M10 version 3 核心字段、引用与通知状态严格校验
+PASS V3-M11 P0-06 未服用按原截止完整时刻开放且拒绝写入零变更
+PASS V3-M12 P0-06 延后保护、权限、取消与既有事实统一拒绝
+PASS V3-M13 P0-06 保留任务、幂等重试与截止后更正保持审计版本
+PASS 13 version 3 migration groups
+✔ tests/v3-stage01.rules.test.cjs (55.41025ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 62.519625
