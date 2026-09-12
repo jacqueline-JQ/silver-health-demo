@@ -1273,7 +1273,9 @@ textarea:focus-visible {
 }
 
 .modal-sheet {
-  width: min(100%, 480px);
+width: min(100%, 480px);
+max-width: 100%;
+min-width: 0;
   max-height: min(91vh, 820px);
   margin: 0 auto;
   overflow: auto;
@@ -1319,7 +1321,7 @@ textarea:focus-visible {
   background: #f3f6f4;
 }
 
-.sheet-content { padding: 4px 20px calc(22px + env(safe-area-inset-bottom)); }
+.sheet-content { min-width: 0; max-width: 100%; padding: 4px 20px calc(22px + env(safe-area-inset-bottom)); }
 
 .quick-choices {
   display: grid;
@@ -1397,7 +1399,7 @@ textarea:focus-visible {
 
 .mode-tab.is-active { border-color: var(--primary); color: var(--primary-dark); background: var(--primary-soft); }
 
-.form-row { margin-top: 12px; }
+.form-row { max-width: 100%; min-width: 0; margin-top: 12px; }
 .form-row label { display: block; margin-bottom: 6px; color: var(--ink); font-size: 0.81em; font-weight: 800; }
 .form-row input,
 .form-row select,
@@ -1953,6 +1955,8 @@ button:not(:disabled):active { transform: scale(.97); }
 .bmi-value { color: var(--ink); font-size: .9em; }
 .bmi-value strong { font-size: 1.3em; }
 .required-star { color: #6e7986; font-size: .9em; }
+.medicine-plan-form,.medicine-form-fields,.medicine-form-fields > *,.medicine-schedule-fields,.slot-grid,.slot-head,.slot-line,.slot-control,.slot-time,.meal-segment,.time-wheels,.wheel-column { max-width: 100%; min-width: 0; }
+.medicine-plan-form,.medicine-form-fields { overflow-wrap: anywhere; }
 .slot-grid { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 .slot-head,.slot-line { display: grid; grid-template-columns: 26px minmax(0,1fr) 90px 66px; align-items: center; gap: 5px; padding: 12px 8px; }
 .slot-head { color: var(--muted); background: #f2f6f3; font-size: .7em; }
@@ -1961,6 +1965,7 @@ button:not(:disabled):active { transform: scale(.97); }
 .slot-checkbox { display: flex; align-items: center; justify-content: center; min-height: 56px; cursor: pointer; }
 .slot-name { font-size: .86em; font-weight: 600; overflow-wrap: anywhere; }
 .slot-name small { display: block; margin-top: 4px; font-size: .78em; color: var(--muted); font-weight: 400; }
+.slot-control-label { display: none; color: var(--muted); font-size: .76em; font-weight: 700; }
 .slot-time { position: relative; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 2px; }
 .slot-time > .required-star { position: absolute; top: -14px; right: 0; }
 .time-part { display: grid; justify-items: center; padding: 8px 2px; min-height: 48px; border: 1px solid #dce5df; border-radius: 8px; background: #fff; font-size: .88em; font-variant-numeric: tabular-nums; }
@@ -1984,9 +1989,25 @@ button:not(:disabled):active { transform: scale(.97); }
 .wheel-list button.is-selected { color: var(--primary-dark); background: #dfeee4; font-weight: 700; }
 .picker-preview { text-align: center; font-size: 1.5em; font-variant-numeric: tabular-nums; }
 .target-caption .text-button { margin-left: 12px; }
-@media (max-width: 380px) {
-  .slot-head,.slot-line { grid-template-columns: 22px minmax(0,1fr) 86px 60px; gap: 4px; padding: 10px 5px; }
-  .slot-name small { overflow-wrap: normal; word-break: normal; }
+@media (max-width: 480px) {
+  .slot-head { display: none; }
+  .slot-line { grid-template-columns: 44px minmax(0,1fr); gap: 10px 12px; padding: 14px 12px; }
+  .slot-checkbox { min-height: 44px; }
+  .slot-reminder-control,.slot-meal-control { grid-column: 1 / -1; }
+  .slot-control { display: grid; gap: 6px; }
+  .slot-control-label { display: block; }
+  .meal-segment { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .meal-segment button + button { border-top: 0; border-left: 1px solid #dce5df; }
+  .time-wheels { gap: 12px; }
+}
+@media (min-width: 481px) {
+  .font-elder .slot-head { display: none; }
+  .font-elder .slot-line { grid-template-columns: 56px minmax(0,1fr); gap: 12px; padding: 16px; }
+  .font-elder .slot-reminder-control,.font-elder .slot-meal-control { grid-column: 1 / -1; }
+  .font-elder .slot-control { display: grid; gap: 8px; }
+  .font-elder .slot-control-label { display: block; }
+  .font-elder .meal-segment { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .font-elder .meal-segment button + button { border-top: 0; border-left: 1px solid #dce5df; }
 }
 /* 主题只改变表面、导航与控件外观，保持同一语义和权限。 */
 [data-os="harmonyos"] { --primary:#315eb8;--primary-dark:#234887;--primary-soft:#e9effb;--bg:#f1f3f5;--ink:#202b3c;font-family:'HarmonyOS Sans SC','PingFang SC',system-ui,sans-serif; }
